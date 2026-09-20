@@ -54,7 +54,7 @@ export async function getMailerForTenant(tenantSlug) {
   const fallback = {
     transporter: defaultTransporter,
     fromEmail: process.env.EMAIL_USER,
-    fromAddress: `"UniAssist" <${process.env.EMAIL_USER}>`,
+    fromAddress: `"AtriumDesk" <${process.env.EMAIL_USER}>`,
   };
   if (!tenantSlug) return fallback;
 
@@ -74,7 +74,7 @@ export async function getMailerForTenant(tenantSlug) {
       auth: { user: tenant.smtp.fromEmail, pass: appPassword },
     });
 
-    const displayName = tenant.smtp.fromName || tenant.branding?.universityName || "UniAssist";
+    const displayName = tenant.smtp.fromName || tenant.branding?.universityName || "AtriumDesk";
     const result = {
       transporter,
       fromEmail: tenant.smtp.fromEmail,

@@ -125,7 +125,7 @@ const Settings = () => {
       <div className="flex items-center gap-2">
         <Building2 className="w-5 h-5" style={{ color: C.navy }} />
         <p className="text-sm" style={{ color: C.muted }}>
-          These fields control how UniAssist is branded for your university — logo, name and
+          These fields control how AtriumDesk is branded for your university — logo, name and
           colors shown across the portal, plus which email domains route logins to your
           institution. Changes take effect immediately, no redeploy needed.
         </p>

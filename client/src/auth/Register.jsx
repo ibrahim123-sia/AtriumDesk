@@ -136,7 +136,7 @@ const Register = () => {
               <span className="absolute -bottom-1 left-2 right-2 h-0.5 rounded-full bg-[#4E9128]" />
             </div>
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#0F2E2A] dark:text-[#E8F5F2]">
-              UniAssist
+              AtriumDesk
             </h1>
           </div>
           <p
@@ -426,7 +426,7 @@ const Register = () => {
           <div className="space-y-4 sm:space-y-6 lg:space-y-8">
             <div className="bg-[#0D9488] dark:bg-[#152E2A] rounded-2xl shadow-2xl p-4 sm:p-6 lg:p-8 text-white border-t-4 border-[#4E9128]">
               <h3 className="text-lg sm:text-xl lg:text-2xl font-bold mb-4 sm:mb-6">
-                Why Join UniAssist?
+                Why Join AtriumDesk?
               </h3>
               <div className="space-y-4 sm:space-y-6">
                 {[
@@ -523,7 +523,7 @@ const Register = () => {
                   theme === "dark" ? "text-[#8FB0AA]" : "text-[#53716C]"
                 }`}
               >
-                Access UniAssist from any device
+                Access AtriumDesk from any device
               </p>
             </div>
           </div>

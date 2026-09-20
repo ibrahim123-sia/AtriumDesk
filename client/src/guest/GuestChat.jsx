@@ -210,7 +210,7 @@ const GuestChat = () => {
             </div>
             <div>
               <h1 className="text-lg font-bold text-[#0F2E2A] dark:text-[#E8F5F2] leading-tight">
-                UniAssist
+                AtriumDesk
               </h1>
               <p className="text-[11px] text-[#53716C] dark:text-[#8FB0AA]">
                 {universityShort} Student Assistant
@@ -424,7 +424,7 @@ const GuestChat = () => {
 
               <div className="flex flex-col items-center">
                 <h1 className="text-lg font-bold text-[#0F2E2A] dark:text-[#E8F5F2]">
-                  UniAssist
+                  AtriumDesk
                 </h1>
                 <p className="text-xs text-[#53716C] dark:text-[#8FB0AA]">
                   Guest Mode
@@ -496,7 +496,7 @@ const GuestChat = () => {
                 </div>
                 <div className="flex-1 text-center md:text-left">
                   <h2 className="text-lg font-bold text-[#0F2E2A] dark:text-[#E8F5F2] mb-2">
-                    Welcome to UniAssist!
+                    Welcome to AtriumDesk!
                   </h2>
                   <p
                     className={`text-sm ${

@@ -34,7 +34,7 @@ const PlatformLogin = () => {
       <form onSubmit={handleSubmit} className="w-full max-w-sm p-8 rounded-xl border space-y-5" style={{ backgroundColor: C.surface, borderColor: C.border }}>
         <div className="text-center space-y-1">
           <ShieldCheck className="w-8 h-8 mx-auto" style={{ color: C.navy }} />
-          <h1 className="text-lg font-bold" style={{ color: C.text }}>UniAssist Platform</h1>
+          <h1 className="text-lg font-bold" style={{ color: C.text }}>AtriumDesk Platform</h1>
           <p className="text-xs" style={{ color: C.muted }}>Super Admin console</p>
         </div>
 

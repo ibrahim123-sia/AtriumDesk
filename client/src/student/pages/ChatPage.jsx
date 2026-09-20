@@ -501,7 +501,7 @@ const ChatPage = () => {
               </div>
               <div className="flex-1 text-center md:text-left">
                 <h2 className="text-lg font-bold text-[#0F2E2A] dark:text-[#E8F5F2] mb-2">
-                  Welcome to UniAssist!
+                  Welcome to AtriumDesk!
                 </h2>
                 <p
                   className={`text-sm ${

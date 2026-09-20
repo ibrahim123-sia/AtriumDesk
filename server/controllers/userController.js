@@ -189,7 +189,7 @@ const generateToken = (id, tenantSlug) => {
 const sendOtpEmail = async (toEmail, name, otp, subject = 'OTP Verification', tenant = null) => {
   try {
     const { transporter, fromAddress } = await getMailerForTenant(tenant?.slug);
-    const brandName = tenant?.branding?.universityName || tenant?.branding?.universityShort || "UniAssist";
+    const brandName = tenant?.branding?.universityName || tenant?.branding?.universityShort || "AtriumDesk";
     const mailOptions = {
       from: fromAddress,
       to: toEmail,

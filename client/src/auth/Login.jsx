@@ -133,7 +133,7 @@ const Login = () => {
               <span className="absolute -bottom-1 left-2 right-2 h-0.5 rounded-full bg-[#4E9128]" />
             </div>
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#0F2E2A] dark:text-[#E8F5F2]">
-              UniAssist
+              AtriumDesk
             </h1>
           </div>
           <p
@@ -165,7 +165,7 @@ const Login = () => {
                     theme === "dark" ? "text-[#8FB0AA]" : "text-[#53716C]"
                   }`}
                 >
-                  Sign in to your UniAssist account
+                  Sign in to your AtriumDesk account
                 </p>
 
                 <form

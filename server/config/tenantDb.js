@@ -9,7 +9,7 @@ import mongoose from "mongoose";
 // per-connection caching (mongoose.connection.useDb() with useCache:true
 // still returns a distinct, empty-models Connection object per db name).
 
-const PLATFORM_DB_NAME = process.env.PLATFORM_DB_NAME || "UniAssistPlatform";
+const PLATFORM_DB_NAME = process.env.PLATFORM_DB_NAME || "AtriumDeskPlatform";
 
 export const getTenantConnection = (dbName) => {
   if (!dbName) throw new Error("getTenantConnection: dbName is required");

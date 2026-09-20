@@ -1,6 +1,6 @@
 {
-  "name": "UniAssist — MAJU Student Assistant",
-  "short_name": "UniAssist",
+  "name": "AtriumDesk — MAJU Student Assistant",
+  "short_name": "AtriumDesk",
   "description": "AI-powered assistant for Muhammad Ali Jinnah University students — chatbot, issues, scholarships, jobs, and events.",
   "start_url": "/",
   "scope": "/",

@@ -166,7 +166,7 @@ const Message = ({ message, chatId, priorUserQuestion }) => {
           )}
           {message.isVoiceResponse && <Volume2 className="w-4 h-4" />}
           <span className="text-xs font-medium opacity-75">
-            {isUser ? 'You' : 'UniAssist'}
+            {isUser ? 'You' : 'AtriumDesk'}
           </span>
         </div>
 
