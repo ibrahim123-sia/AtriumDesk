@@ -37,7 +37,7 @@ const Unsubscribe = () => {
         </h1>
         <p className="text-sm text-gray-600 dark:text-gray-300">{message}</p>
         <Link to="/login" className="inline-block mt-4 text-sm text-blue-600 dark:text-blue-400">
-          Back to UniAssist
+          Back to AtriumDesk
         </Link>
       </div>
     </div>

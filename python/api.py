@@ -61,7 +61,7 @@ load_dotenv()
 # =============================================================
 
 app = FastAPI(
-    title="UniAssist RAG + Admin API",
+    title="AtriumDesk RAG + Admin API",
     description="RAG endpoint for students; admin CRUD for the vector store.",
 )
 
@@ -504,7 +504,7 @@ async def transcribe(
     if not suffix:
         suffix = ".webm"
 
-    fd, tmp_path = tempfile.mkstemp(suffix=suffix, prefix="uniassist_audio_")
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix, prefix="atriumdesk_audio_")
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(content)

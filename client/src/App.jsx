@@ -85,7 +85,7 @@ const App = () => {
   // back to the default when logged out or branding hasn't loaded yet.
   useEffect(() => {
     const name = tenantBranding?.universityShort || tenantBranding?.universityName;
-    document.title = name ? `${name} — UniAssist` : "UniAssist";
+    document.title = name ? `${name} — AtriumDesk` : "AtriumDesk";
   }, [tenantBranding]);
 
   // Rev7 SaaS follow-up — PWA manifest was one static file shared by every

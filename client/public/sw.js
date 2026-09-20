@@ -15,7 +15,7 @@
 //     opportunistically as they're requested (Vite's hashed build output
 //     isn't known ahead of time, so this can't be a fixed precache list).
 
-const CACHE_NAME = "uniassist-shell-v2";
+const CACHE_NAME = "atriumdesk-shell-v3";
 const APP_SHELL = ["/", "/manifest.json", "/graduation.png", "/logo-mark.svg", "/logo-lockup.svg"];
 
 self.addEventListener("install", (event) => {

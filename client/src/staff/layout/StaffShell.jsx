@@ -47,7 +47,7 @@ const StaffShell = () => {
   return (
     <div className="min-h-screen" style={{ backgroundColor: C.bg }}>
       <TopNavbar
-        wordmark={tenantBranding?.universityShort || "UniAssist"}
+        wordmark={tenantBranding?.universityShort || "AtriumDesk"}
         subLabel={user?.staffTitle || "Staff Console"}
         roleLabel="Staff"
         navItems={NAV}

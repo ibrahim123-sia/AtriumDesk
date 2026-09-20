@@ -46,7 +46,7 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use("/uploads", express.static(UPLOAD_ROOT));
 
 // Routes
-app.get("/", (req, res) => res.send("UniAssist Server is Live"));
+app.get("/", (req, res) => res.send("AtriumDesk Server is Live"));
 app.use("/api/user", userRouter);
 app.use("/api/chat", chatRouter);
 app.use("/api/message", messageRouter);
@@ -67,5 +67,5 @@ app.use("/api/platform", platformRouter);
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`UniAssist Server is running on port ${PORT}`);
+  console.log(`AtriumDesk Server is running on port ${PORT}`);
 });

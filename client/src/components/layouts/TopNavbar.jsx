@@ -15,7 +15,7 @@ import { Menu, X, ChevronDown } from "lucide-react";
  * the `md` breakpoint, per explicit ask for "industry standard" responsive
  * navigation.
  */
-const TopNavbar = ({ logoLabel = "UA", wordmark = "UniAssist", subLabel, roleLabel, navItems, maxVisibleTabs, avatarInitials, userName, userEmail, menuItems, C }) => {
+const TopNavbar = ({ logoLabel = "AD", wordmark = "AtriumDesk", subLabel, roleLabel, navItems, maxVisibleTabs, avatarInitials, userName, userEmail, menuItems, C }) => {
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);

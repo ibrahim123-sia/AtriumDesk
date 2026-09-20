@@ -245,7 +245,7 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
             </div>
             <div>
               <h1 className="text-base font-extrabold leading-tight text-white">
-                {tenantBranding?.universityShort || "UniAssist"}
+                {tenantBranding?.universityShort || "AtriumDesk"}
               </h1>
               <p className="text-[11px]" style={{ color: "rgba(255,255,255,.6)" }}>
                 Student Portal

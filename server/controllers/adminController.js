@@ -321,10 +321,10 @@ export const createStaffUser = async (req, res) => {
     // Email the staff member their credentials (don't fail the request if SMTP misfires)
     notify(req.models.Notification, user, {
       type: "issue_created",
-      message: "Your UniAssist staff account is ready",
-      emailSubject: "Welcome to UniAssist — Your Staff Credentials",
+      message: "Your AtriumDesk staff account is ready",
+      emailSubject: "Welcome to AtriumDesk — Your Staff Credentials",
       emailHeading: `Welcome, ${name}`,
-      emailBody: `An administrator created a staff account for you on UniAssist (${dept.name}).<br/><br/><strong>Email:</strong> ${email}<br/><strong>Password:</strong> ${password}<br/><br/>Please log in and change your password as soon as possible.`,
+      emailBody: `An administrator created a staff account for you on AtriumDesk (${dept.name}).<br/><br/><strong>Email:</strong> ${email}<br/><strong>Password:</strong> ${password}<br/><br/>Please log in and change your password as soon as possible.`,
       link: "/login",
       branding: req.tenant?.branding,
       tenantSlug: req.tenant?.slug,
@@ -387,9 +387,9 @@ export const updateStaffUser = async (req, res) => {
         type: "account_email_changed",
         message: `Your sign-in email was changed to ${user.email}`,
         link: "/profile",
-        emailSubject: "Your UniAssist sign-in email was changed",
+        emailSubject: "Your AtriumDesk sign-in email was changed",
         emailHeading: "Your sign-in email was updated",
-        emailBody: `${adminName} updated your UniAssist sign-in email.<br/><br/>
+        emailBody: `${adminName} updated your AtriumDesk sign-in email.<br/><br/>
           <strong>Previous:</strong> ${previousEmail}<br/>
           <strong>New (use this to log in):</strong> ${user.email}<br/><br/>
           Your password is unchanged. If you didn't expect this change, contact your administrator immediately.`,
@@ -399,9 +399,9 @@ export const updateStaffUser = async (req, res) => {
 
       sendDirectEmail({
         to: previousEmail,
-        subject: "Security alert: your UniAssist sign-in email was changed",
+        subject: "Security alert: your AtriumDesk sign-in email was changed",
         heading: "Security alert — sign-in email changed",
-        body: `${adminName} changed the sign-in email on your UniAssist account.<br/><br/>
+        body: `${adminName} changed the sign-in email on your AtriumDesk account.<br/><br/>
           <strong>Old email (this one):</strong> ${previousEmail}<br/>
           <strong>New email (now used to sign in):</strong> ${user.email}<br/><br/>
           You will no longer be able to sign in with this address. If you did NOT expect or authorize this change, contact your administrator immediately — your account may be compromised.`,

@@ -7,8 +7,8 @@
 import { getTenantModel } from "../models/platform/Tenant.js";
 
 const DEFAULT_MANIFEST = {
-  name: "UniAssist",
-  short_name: "UniAssist",
+  name: "AtriumDesk",
+  short_name: "AtriumDesk",
   description: "AI-powered assistant for university students — chatbot, issues, scholarships, jobs, and events.",
   background_color: "#F3F8F7",
   theme_color: "#0D9488",
@@ -30,7 +30,7 @@ export const getTenantManifest = async (req, res) => {
     if (tenant?.branding) {
       const name = tenant.branding.universityName || tenant.branding.universityShort || DEFAULT_MANIFEST.name;
       branding = {
-        name: `UniAssist — ${name}`,
+        name: `AtriumDesk — ${name}`,
         short_name: tenant.branding.universityShort || DEFAULT_MANIFEST.short_name,
         description: `AI-powered assistant for ${name} students — chatbot, issues, scholarships, jobs, and events.`,
         background_color: DEFAULT_MANIFEST.background_color,

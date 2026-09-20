@@ -1,11 +1,11 @@
 import jwt from "jsonwebtoken";
 import { getMailerForTenant } from "./mailer.js";
 
-const DEFAULT_BRAND_NAME = "UniAssist";
+const DEFAULT_BRAND_NAME = "AtriumDesk";
 const DEFAULT_BRAND_COLOR = "#1E2E6E";
 
 // `branding` is the caller's tenant branding (req.tenant?.branding) — falls
-// back to the original hardcoded UniAssist/MAJU look when absent, so this
+// back to the original hardcoded AtriumDesk/MAJU look when absent, so this
 // stays backward-compatible for any call site that hasn't been threaded
 // through yet.
 const emailTemplate = ({ heading, body, link, branding, unsubscribeLink }) => {
@@ -136,7 +136,7 @@ export const sendDigestEmail = async (NotificationModel, user, { items, branding
 // (req.models.Notification) — Notification is compiled per-tenant via
 // server/models/registry.js, not against a single shared default connection.
 // `branding` (req.tenant?.branding) drives the email's look; omitted, it
-// falls back to the original UniAssist defaults.
+// falls back to the original AtriumDesk defaults.
 export const notify = async (
   NotificationModel,
   user,

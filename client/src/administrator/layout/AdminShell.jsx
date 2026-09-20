@@ -59,7 +59,7 @@ const AdminShell = () => {
     <div className="min-h-screen" style={{ backgroundColor: C.bg }}>
       <ImpersonationBanner />
       <TopNavbar
-        wordmark={tenantBranding?.universityShort || "UniAssist"}
+        wordmark={tenantBranding?.universityShort || "AtriumDesk"}
         subLabel="Administrator"
         roleLabel="Administrator"
         navItems={NAV}

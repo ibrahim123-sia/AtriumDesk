@@ -45,7 +45,7 @@ const PlatformShell = () => {
   return (
     <div className="min-h-screen" style={{ backgroundColor: C.bg }}>
       <TopNavbar
-        wordmark="UniAssist"
+        wordmark="AtriumDesk"
         subLabel="Super Admin Console"
         roleLabel="Super Admin"
         navItems={NAV}

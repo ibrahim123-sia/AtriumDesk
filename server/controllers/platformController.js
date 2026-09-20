@@ -141,7 +141,7 @@ export const createTenant = async (req, res) => {
     const existing = await Tenant.findOne({ slug: normalizedSlug });
     if (existing) return res.status(409).json({ success: false, message: `Tenant "${normalizedSlug}" already exists` });
 
-    const dbName = `uniassist_${normalizedSlug}`;
+    const dbName = `atriumdesk_${normalizedSlug}`;
     const chromaCollection = `chunks_${normalizedSlug}`;
     const domains = Array.isArray(emailDomains)
       ? emailDomains.map((d) => d.toLowerCase().trim()).filter(Boolean)
