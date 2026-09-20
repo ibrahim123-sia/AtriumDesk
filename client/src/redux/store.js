@@ -15,6 +15,7 @@ import adminLogReducer from "./slices/adminLogSlice";
 import adminFailedQuestionsReducer from "./slices/adminFailedQuestionsSlice";
 import adminListingReducer from "./slices/adminListingSlice";
 import adminSourceReducer from "./slices/adminSourceSlice";
+import adminActivityReducer from "./slices/adminActivitySlice";
 import scholarshipReducer from "./slices/scholarshipSlice";
 import jobReducer from "./slices/jobSlice";
 import eventReducer from "./slices/eventSlice";
@@ -41,6 +42,7 @@ export const store = configureStore({
     adminFailedQuestions: adminFailedQuestionsReducer,
     adminListing: adminListingReducer,
     adminSource: adminSourceReducer,
+    adminActivity: adminActivityReducer,
     scholarship: scholarshipReducer,
     job: jobReducer,
     event: eventReducer,
