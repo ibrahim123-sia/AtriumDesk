@@ -12,6 +12,7 @@ import ProtectedPlatformRoute from "./platform/ProtectedPlatformRoute";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import ChatPage from "./student/pages/ChatPage";
 import GuestChat from "./guest/GuestChat";
+import GuestScholarships from "./guest/GuestScholarships";
 import RequireStaffPermission from "./components/RequireStaffPermission";
 
 // Rev7 user request — "optimizations, industry standard practices."
@@ -165,6 +166,7 @@ const App = () => {
       <Routes>
         {/* Public routes */}
         <Route path="/" element={<GuestChat />} />
+        <Route path="/guest/scholarships" element={<GuestScholarships />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/unsubscribe" element={<Unsubscribe />} />

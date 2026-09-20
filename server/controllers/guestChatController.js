@@ -516,6 +516,7 @@ export const getGuestBranding = async (req, res) => {
       tenantSlug: tenant.slug,
       branding: tenant.branding || null,
       enabledFeatures: tenant.enabledFeatures || null,
+      feeConfig: tenant.feeConfig || null,
     });
   } catch (error) {
     console.error("getGuestBranding error:", error.message);

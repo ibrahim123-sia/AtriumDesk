@@ -43,6 +43,7 @@ const emptyForm = {
   ragTopK: "",
   ragListingRelevance: "",
   ragListingConfident: "",
+  feePerCreditHour: "",
 };
 
 const Settings = () => {
@@ -78,6 +79,7 @@ const Settings = () => {
       ragTopK: settings.ragConfig?.topK ?? "",
       ragListingRelevance: settings.ragConfig?.listingRelevance ?? "",
       ragListingConfident: settings.ragConfig?.listingConfident ?? "",
+      feePerCreditHour: settings.feeConfig?.feePerCreditHour ?? "",
     });
   }, [settings]);
 
@@ -116,6 +118,9 @@ const Settings = () => {
         topK: form.ragTopK === "" ? null : form.ragTopK,
         listingRelevance: form.ragListingRelevance === "" ? null : form.ragListingRelevance,
         listingConfident: form.ragListingConfident === "" ? null : form.ragListingConfident,
+      },
+      feeConfig: {
+        feePerCreditHour: form.feePerCreditHour === "" ? null : form.feePerCreditHour,
       },
     };
     const result = await dispatch(updateTenantSettings(body)).unwrap();
@@ -207,6 +212,19 @@ const Settings = () => {
             value={form.supportEmail}
             onChange={handleChange("supportEmail")}
             placeholder="support@youruniversity.edu"
+            className={inputClass}
+            style={inputStyle}
+          />
+        </Field>
+
+        <Field C={C} label="Fee per credit hour" hint="Powers the semester fee calculator on the guest Scholarships tab. Leave blank to hide the calculator.">
+          <input
+            type="number"
+            step="1"
+            min="0"
+            value={form.feePerCreditHour}
+            onChange={handleChange("feePerCreditHour")}
+            placeholder="9000"
             className={inputClass}
             style={inputStyle}
           />

@@ -8,12 +8,10 @@ import {
   fetchGuestBranding,
 } from "../redux/slices/guestSlice";
 import { toggleTheme as toggleThemeAction } from "../redux/slices/themeSlice";
+import GuestSidebar from "./GuestSidebar";
 import {
   Send,
   Brain,
-  Sun,
-  Moon,
-  Mail,
   Calendar,
   Book,
   Info,
@@ -21,11 +19,7 @@ import {
   Users,
   Building,
   Wallet,
-  X,
-  RotateCcw,
   Trash2,
-  MessageCircle,
-  GraduationCap,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -176,220 +170,15 @@ const GuestChat = () => {
           : "bg-linear-to-b from-[#D9F2EE] via-white to-[#F3F8F7]"
       }`}
     >
-      {/* Mobile Overlay */}
-      {isMenuOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-30 md:hidden"
-          onClick={() => setIsMenuOpen(false)}
-        ></div>
-      )}
-
-      {/* Sidebar for Guests */}
-      <div
-        className={`flex flex-col h-screen w-64 ${
-          theme === "dark"
-            ? "bg-[#0F2320]/95 border-[#1E3A35] backdrop-blur-lg"
-            : "bg-white/95 border-[#D9E7E4] backdrop-blur-lg"
-        } border-r transition-transform duration-300 fixed md:relative z-40
-      ${isMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
-      >
-        {/* Close button for mobile */}
-        <button
-          onClick={() => setIsMenuOpen(false)}
-          className="md:hidden absolute top-4 right-4 p-2 rounded-lg hover:bg-[#F3F8F7] dark:hover:bg-[#152E2A]"
-        >
-          <X className="w-5 h-5 text-[#53716C] dark:text-[#8FB0AA]" />
-        </button>
-
-        {/* Logo Section */}
-        <div className="p-6 border-b border-[#D9E7E4] dark:border-[#1E3A35]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center relative bg-[#0D9488]">
-              <span className="text-white font-bold text-lg leading-none">{universityShort.charAt(0).toUpperCase()}</span>
-              <span className="absolute bottom-1 left-2 right-2 h-0.5 rounded-full bg-[#4E9128]" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-[#0F2E2A] dark:text-[#E8F5F2] leading-tight">
-                AtriumDesk
-              </h1>
-              <p className="text-[11px] text-[#53716C] dark:text-[#8FB0AA]">
-                {universityShort} Student Assistant
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Guest Info */}
-        <div className="p-4 border-b border-[#D9E7E4] dark:border-[#1E3A35]">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-linear-to-r from-[#0D9488] to-[#4E9128] flex items-center justify-center">
-              <Users className="w-5 h-5 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[#0F2E2A] dark:text-[#E8F5F2]">
-                Guest User
-              </p>
-              <p className="text-xs text-[#53716C] dark:text-[#8FB0AA]">
-                Text Chat Only
-              </p>
-            </div>
-            {guestSessionId && (
-              <button
-                onClick={handleClearChat}
-                className="p-1.5 rounded-md hover:bg-[#F3F8F7] dark:hover:bg-[#152E2A]"
-                title="Clear chat"
-              >
-                <Trash2 className="w-4 h-4 text-[#53716C] dark:text-[#8FB0AA]" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="p-4">
-          <button
-            onClick={() => navigate("/register")}
-            className="w-full bg-linear-to-r from-[#0D9488] to-[#0D9488] hover:from-[#0B7A70] hover:to-[#0B7A70] 
-            text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all text-sm"
-          >
-            <Sparkles className="w-4 h-4" />
-            Register for Full Access
-          </button>
-        </div>
-
-        {/* Suggested Topics */}
-        <div className="flex-1 overflow-y-auto px-4 pb-4">
-          <h3 className="text-sm font-medium text-[#0F2E2A] dark:text-[#E8F5F2] mb-3">
-            Quick Start Topics
-          </h3>
-
-          <div className="space-y-2">
-            {suggestedTopics.map((topic, index) => (
-              <button
-                key={index}
-                onClick={() => handleSuggestedTopic(topic.text)}
-                className={`w-full text-left p-3 rounded-lg transition-all ${
-                  theme === "dark"
-                    ? "hover:bg-[#152E2A]"
-                    : "hover:bg-[#F3F8F7]"
-                }`}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  {topic.icon}
-                  <p
-                    className={`text-sm font-medium ${
-                      theme === "dark" ? "text-[#E8F5F2]" : "text-[#0F2E2A]"
-                    }`}
-                  >
-                    {topic.text}
-                  </p>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {/* Rev5 §19.2/§19.3 — "concrete reasons to apply" + "evidence of
-              campus life", the admissions-funnel content below the chatbot. */}
-          {listings.scholarships.length > 0 && (
-            <div className="mt-6">
-              <h3 className="text-sm font-medium text-[#0F2E2A] dark:text-[#E8F5F2] mb-3 flex items-center gap-1.5">
-                <GraduationCap className="w-4 h-4 text-[#0D9488] dark:text-[#4E9128]" />
-                {universityShort} Scholarships
-              </h3>
-              <div className="space-y-2">
-                {listings.scholarships.slice(0, 3).map((s) => (
-                  <div
-                    key={s._id}
-                    className={`p-3 rounded-lg border text-sm ${
-                      theme === "dark" ? "border-[#1E3A35] bg-[#0F2320]" : "border-[#D9E7E4] bg-white"
-                    }`}
-                  >
-                    <p className="font-medium text-[#0F2E2A] dark:text-[#E8F5F2]">{s.title}</p>
-                    {s.deadline && (
-                      <p className="text-xs text-[#53716C] dark:text-[#8FB0AA] mt-0.5">
-                        Deadline: {new Date(s.deadline).toLocaleDateString()}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {listings.events.length > 0 && (
-            <div className="mt-6">
-              <h3 className="text-sm font-medium text-[#0F2E2A] dark:text-[#E8F5F2] mb-3 flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-[#0D9488] dark:text-[#4E9128]" />
-                Upcoming Events
-              </h3>
-              <div className="space-y-2">
-                {listings.events.slice(0, 3).map((e) => (
-                  <div
-                    key={e._id}
-                    className={`p-3 rounded-lg border text-sm ${
-                      theme === "dark" ? "border-[#1E3A35] bg-[#0F2320]" : "border-[#D9E7E4] bg-white"
-                    }`}
-                  >
-                    <p className="font-medium text-[#0F2E2A] dark:text-[#E8F5F2]">{e.title}</p>
-                    <p className="text-xs text-[#53716C] dark:text-[#8FB0AA] mt-0.5">
-                      {new Date(e.date).toLocaleDateString()}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Theme & Auth */}
-        <div className="p-4 border-t border-[#D9E7E4] dark:border-[#1E3A35] space-y-2">
-          <div className="flex items-center justify-between p-2.5 rounded-lg bg-[#F3F8F7] dark:bg-[#152E2A]">
-            <div className="flex items-center gap-3">
-              {theme === "dark" ? (
-                <Moon className="w-4 h-4 text-[#4E9128]" />
-              ) : (
-                <Sun className="w-4 h-4 text-[#4E9128]" />
-              )}
-              <span className="text-sm font-medium text-[#0F2E2A] dark:text-[#E8F5F2]">
-                Theme
-              </span>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={theme === "dark"}
-                onChange={toggleTheme}
-                className="sr-only peer"
-              />
-              <div
-                className={`w-10 h-5 rounded-full peer ${
-                  theme === "dark" ? "bg-[#4E9128]" : "bg-[#D9E7E4]"
-                }`}
-              ></div>
-              <div
-                className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                  theme === "dark" ? "translate-x-5" : ""
-                }`}
-              ></div>
-            </label>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => navigate("/login")}
-              className="flex-1 px-3 py-2 text-sm bg-[#F3F8F7] dark:bg-[#152E2A] text-[#0F2E2A] dark:text-[#E8F5F2] rounded-lg hover:bg-[#D9F2EE] dark:hover:bg-[#0F2320]"
-            >
-              Login
-            </button>
-            <button
-              onClick={() => navigate("/register")}
-              className="flex-1 px-3 py-2 text-sm bg-linear-to-r from-[#0D9488] to-[#0D9488] text-white rounded-lg hover:from-[#0B7A70] hover:to-[#0B7A70]"
-            >
-              Register
-            </button>
-          </div>
-        </div>
-      </div>
+      <GuestSidebar
+        activeTab="chat"
+        isMenuOpen={isMenuOpen}
+        setIsMenuOpen={setIsMenuOpen}
+        theme={theme}
+        toggleTheme={toggleTheme}
+        guestSessionId={guestSessionId}
+        onClearChat={handleClearChat}
+      />
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col h-full overflow-hidden md:ml-0">
@@ -508,13 +297,61 @@ const GuestChat = () => {
                     information.
                     <br />
                     <span className="font-medium mt-1 block">
-                      Start by typing your question or selecting a topic from
-                      the sidebar.
+                      Start by typing your question or picking a topic below.
                     </span>
                   </p>
                 </div>
               </div>
             </div>
+
+            <div className="grid gap-2 sm:grid-cols-2 mb-4">
+              {suggestedTopics.map((topic, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleSuggestedTopic(topic.text)}
+                  className={`text-left p-3 rounded-lg border transition-all ${
+                    theme === "dark"
+                      ? "border-[#1E3A35] hover:bg-[#152E2A]"
+                      : "border-[#D9E7E4] hover:bg-[#F3F8F7]"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {topic.icon}
+                    <p
+                      className={`text-sm font-medium ${
+                        theme === "dark" ? "text-[#E8F5F2]" : "text-[#0F2E2A]"
+                      }`}
+                    >
+                      {topic.text}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {listings.events.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-sm font-medium text-[#0F2E2A] dark:text-[#E8F5F2] mb-2 flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-[#0D9488] dark:text-[#4E9128]" />
+                  Upcoming Events
+                </h3>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {listings.events.slice(0, 3).map((e) => (
+                    <div
+                      key={e._id}
+                      className={`p-3 rounded-lg border text-sm ${
+                        theme === "dark" ? "border-[#1E3A35] bg-[#0F2320]" : "border-[#D9E7E4] bg-white"
+                      }`}
+                    >
+                      <p className="font-medium text-[#0F2E2A] dark:text-[#E8F5F2]">{e.title}</p>
+                      <p className="text-xs text-[#53716C] dark:text-[#8FB0AA] mt-0.5">
+                        {new Date(e.date).toLocaleDateString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             </div>
           )}
 

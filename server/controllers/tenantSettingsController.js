@@ -25,6 +25,7 @@ const serializeTenant = (tenant) => ({
   staffEmailDomainPattern: tenant.staffEmailDomainPattern,
   studentEmailPattern: tenant.studentEmailPattern,
   ragConfig: tenant.ragConfig,
+  feeConfig: tenant.feeConfig,
   // Never serialize the encrypted app password itself — only whether one
   // is configured, so the client can show "configured" vs. an empty field
   // without ever round-tripping the secret.
@@ -48,7 +49,7 @@ export const getTenantSettings = async (req, res) => {
 };
 
 export const updateTenantSettings = async (req, res) => {
-  const { name, branding, emailDomains, staffEmailDomainPattern, studentEmailPattern, smtp, ragConfig } = req.body || {};
+  const { name, branding, emailDomains, staffEmailDomainPattern, studentEmailPattern, smtp, ragConfig, feeConfig } = req.body || {};
   try {
     const Tenant = getTenantModel();
     const tenant = await Tenant.findById(req.tenant._id).select("+smtp.appPasswordEncrypted");
@@ -133,6 +134,18 @@ export const updateTenantSettings = async (req, res) => {
           }
           tenant.ragConfig.topK = topK;
         }
+      }
+    }
+
+    if (feeConfig && typeof feeConfig === "object" && feeConfig.feePerCreditHour !== undefined) {
+      if (feeConfig.feePerCreditHour === null || feeConfig.feePerCreditHour === "") {
+        tenant.feeConfig.feePerCreditHour = null;
+      } else {
+        const rate = Number(feeConfig.feePerCreditHour);
+        if (!Number.isFinite(rate) || rate < 0) {
+          return res.status(400).json({ success: false, message: "feePerCreditHour must be a non-negative number" });
+        }
+        tenant.feeConfig.feePerCreditHour = rate;
       }
     }
 
