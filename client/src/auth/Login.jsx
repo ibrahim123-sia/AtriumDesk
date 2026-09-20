@@ -141,7 +141,7 @@ const Login = () => {
               theme === "dark" ? "text-[#8FB0AA]" : "text-[#53716C]"
             }`}
           >
-            Your AI-Powered Companion for University Life at MAJU
+            Your AI-Powered Companion for University Life
           </p>
         </div>
 

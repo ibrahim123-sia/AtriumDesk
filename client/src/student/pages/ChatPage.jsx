@@ -23,6 +23,7 @@ const ChatPage = () => {
   const theme = useSelector((s) => s.theme.theme);
   const user = useSelector((s) => s.auth.user);
   const token = useSelector((s) => s.auth.token);
+  const tenantBranding = useSelector((s) => s.tenant.branding);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [prompt, setPrompt] = useState("");
@@ -382,6 +383,7 @@ const ChatPage = () => {
     }
   }, [messages]);
 
+  const uniShort = tenantBranding?.universityShort || "your university";
   const suggestedTopics = [
     {
       icon: <Wallet className="w-4 h-4" />,
@@ -393,15 +395,15 @@ const ChatPage = () => {
     },
     {
       icon: <Building className="w-4 h-4" />,
-      text: "Is MAJU recognized by H.E.C?",
+      text: `Is ${uniShort} recognized by H.E.C?`,
     },
     {
       icon: <Book className="w-4 h-4" />,
-      text: "In which areas MAJU offer degrees?",
+      text: `In which areas does ${uniShort} offer degrees?`,
     },
     {
       icon: <Sparkles className="w-4 h-4" />,
-      text: "Does MAJU offer any scholarships?",
+      text: `Does ${uniShort} offer any scholarships?`,
     },
   ];
 
@@ -508,7 +510,7 @@ const ChatPage = () => {
                     theme === "dark" ? "text-[#8FB0AA]" : "text-[#53716C]"
                   }`}
                 >
-                  Your intelligent assistant for MAJU. Ask questions,
+                  Your intelligent assistant for {uniShort}. Ask questions,
                   draft emails, and get personalized help.
                 </p>
               </div>
