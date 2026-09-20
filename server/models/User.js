@@ -125,7 +125,13 @@ export const userSchema = new mongoose.Schema({
       session: { type: String, default: "" },
       admissionYear: { type: Number, default: null },
       rollNumber: { type: String, default: "" },
-      cgpa: { type: Number, min: 0, max: 4, default: null },
+      // `cgpa` is on whatever scale `cgpaScale` says (validated against
+      // cgpaScale in userController.js's update handler, since Mongoose
+      // can't cross-reference a sibling field's value in `max`). Not every
+      // tenant's students grade on a 4.0 scale, so the scale is captured
+      // alongside the score rather than assumed — see cgpaConversion.js.
+      cgpa: { type: Number, min: 0, default: null },
+      cgpaScale: { type: Number, min: 1, default: 4 },
       currentSemester: { type: Number, min: 1, max: 12, default: null },
       expectedGraduationDate: { type: Date, default: null },
     },

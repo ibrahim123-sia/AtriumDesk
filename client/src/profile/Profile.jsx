@@ -124,6 +124,7 @@ const Profile = () => {
   const [core, setCore] = useState({
     degreeProgram: p.core?.degreeProgram || "",
     cgpa: p.core?.cgpa ?? "",
+    cgpaScale: p.core?.cgpaScale ?? 4,
     currentSemester: p.core?.currentSemester ?? "",
     expectedGraduationDate: p.core?.expectedGraduationDate
       ? String(p.core.expectedGraduationDate).slice(0, 10)
@@ -214,6 +215,7 @@ const Profile = () => {
         core: {
           degreeProgram: core.degreeProgram,
           cgpa: core.cgpa === "" ? null : Number(core.cgpa),
+          cgpaScale: core.cgpaScale === "" ? null : Number(core.cgpaScale),
           currentSemester: core.currentSemester === "" ? null : Number(core.currentSemester),
           expectedGraduationDate: core.expectedGraduationDate || null,
         },
@@ -549,18 +551,36 @@ const Profile = () => {
                   style={{ backgroundColor: C.input, borderColor: C.border, color: C.text }}
                 />
               </Field>
-              <Field C={C} label="CGPA" hint="Used for scholarship & job eligibility checks.">
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="4"
-                  value={core.cgpa}
-                  onChange={(e) => setCore({ ...core, cgpa: e.target.value })}
-                  placeholder="3.4"
-                  className={fieldClass}
-                  style={{ backgroundColor: C.input, borderColor: C.border, color: C.text }}
-                />
+              <Field C={C} label="CGPA" hint="Enter your score and your program's scale — not every degree grades out of 4.0.">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max={core.cgpaScale || undefined}
+                    value={core.cgpa}
+                    onChange={(e) => setCore({ ...core, cgpa: e.target.value })}
+                    placeholder="3.4"
+                    className={fieldClass}
+                    style={{ backgroundColor: C.input, borderColor: C.border, color: C.text }}
+                  />
+                  <span style={{ color: C.muted }}>/</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    value={core.cgpaScale}
+                    onChange={(e) => setCore({ ...core, cgpaScale: e.target.value })}
+                    placeholder="4"
+                    className={fieldClass}
+                    style={{ backgroundColor: C.input, borderColor: C.border, color: C.text, maxWidth: "5.5rem" }}
+                  />
+                </div>
+                {p.core?.cgpaGerman != null && (
+                  <p className="text-xs mt-1" style={{ color: C.muted }}>
+                    ≈ {p.core.cgpaGerman} German scale · {p.core.cgpaPercentage}%
+                  </p>
+                )}
               </Field>
               <Field C={C} label="Expected graduation date">
                 <input

@@ -19,13 +19,27 @@ const inferDegreeLevel = (degreeProgram) => {
   return "bachelors";
 };
 
+// Every admin-entered `cgpaRequirement` on a Listing (and every
+// `requirements.minCgpa` matching.js compares against) is entered assuming
+// a 4.0 scale — that's the only scale that existed before per-student
+// scales were added. Rather than touch every admin form and stored
+// listing, the student's own score is normalized onto that same 4.0
+// reference scale here, once, at the matching boundary.
+const MATCH_REFERENCE_SCALE = 4;
+
+const normalizeCgpa = (cgpa, cgpaScale) => {
+  if (cgpa == null) return null;
+  const scale = cgpaScale || MATCH_REFERENCE_SCALE;
+  return (cgpa / scale) * MATCH_REFERENCE_SCALE;
+};
+
 export const buildStudentMatchProfile = (user) => {
   const profile = user.profile || {};
   const core = profile.core || {};
   const career = profile.career || {};
   const studyAbroad = profile.studyAbroad || {};
   return {
-    cgpa: core.cgpa ?? null,
+    cgpa: normalizeCgpa(core.cgpa, core.cgpaScale),
     ieltsScore: studyAbroad.ieltsScore ?? null,
     toeflScore: studyAbroad.toeflScore ?? null,
     degreeLevel: inferDegreeLevel(core.degreeProgram),

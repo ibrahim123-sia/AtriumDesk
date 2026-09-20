@@ -11,6 +11,7 @@ import { getPlatformAuditLogModel } from "../models/platform/PlatformAuditLog.js
 import { peekGuestSessionMessages, deleteGuestSession } from "./guestChatController.js";
 import { getMailerForTenant, verifyDefaultTransporter } from "../services/mailer.js";
 import { MAX_MATCHED_INPUT_LENGTH } from "../services/regexSafety.js";
+import { cgpaToGerman, cgpaToPercentage } from "../services/cgpaConversion.js";
 
 verifyDefaultTransporter();
 
@@ -936,6 +937,19 @@ export const loginUser = async (req, res) => {
   }
 };
 
+// Server-computed, not stored — a student's cgpaScale can change (or get
+// corrected) at any time, so these must be derived fresh on every read
+// rather than cached on the document and risk going stale.
+const withCgpaConversion = (core) => {
+  if (!core || core.cgpa == null) return core;
+  const scale = core.cgpaScale || 4;
+  return {
+    ...(core.toObject ? core.toObject() : core),
+    cgpaGerman: cgpaToGerman(core.cgpa, scale),
+    cgpaPercentage: cgpaToPercentage(core.cgpa, scale),
+  };
+};
+
 const serializeUser = (user) => ({
   _id: user._id,
   name: user.name,
@@ -947,7 +961,12 @@ const serializeUser = (user) => ({
   rollNumber: user.profile?.core?.rollNumber,
   session: user.profile?.core?.session,
   admissionYear: user.profile?.core?.admissionYear,
-  profile: user.profile,
+  profile: user.profile
+    ? {
+        ...(user.profile.toObject ? user.profile.toObject() : user.profile),
+        core: withCgpaConversion(user.profile.core),
+      }
+    : user.profile,
   isVerified: user.isVerified,
   role: user.role,
   department: user.department,
@@ -1022,7 +1041,7 @@ export const updateProfile = async (req, res) => {
 //   fields once the student confirms the extracted data.
 // ---------------------------------------------------------------------------
 
-const CORE_NUMERIC_FIELDS = ["cgpa", "currentSemester"];
+const CORE_NUMERIC_FIELDS = ["cgpa", "cgpaScale", "currentSemester"];
 const STUDY_ABROAD_NUMERIC_FIELDS = ["ieltsScore", "toeflScore"];
 
 export const updateProfileDetails = async (req, res) => {
@@ -1042,6 +1061,17 @@ export const updateProfileDetails = async (req, res) => {
         user.profile.core.expectedGraduationDate = core.expectedGraduationDate
           ? new Date(core.expectedGraduationDate)
           : null;
+      }
+      // Mongoose's schema-level `min`/`max` can't cross-reference a sibling
+      // field, so the "score can't exceed its own scale" check lives here —
+      // a 4.5 CGPA on a "scale of 4" is meaningless and would silently
+      // corrupt every matching/near-miss comparison downstream.
+      const { cgpa, cgpaScale } = user.profile.core;
+      if (cgpa !== null && cgpaScale !== null && cgpa > cgpaScale) {
+        return res.status(400).json({
+          success: false,
+          message: `CGPA (${cgpa}) cannot exceed its own scale (${cgpaScale}).`,
+        });
       }
     }
 
