@@ -25,89 +25,15 @@ import database       # ChromaDB retrieval helper functions
 # PROMPT CREATION
 # =============================================================
 
-LANGUAGE_INSTRUCTION = {
-    "en": "Respond in clear, natural English.",
-    # Roman Urdu = Urdu typed with English letters. Llama 3.2:3b will happily
-    # output Devanagari (Hindi script) if the prompt says "Urdu" without an
-    # explicit script ban — Hindi/Urdu overlap heavily in its training data.
-    # The block below is intentionally repetitive and shows BOTH bad scripts
-    # alongside a good example so the constraint is unmissable.
-    "roman_urdu": (
-        "The student wrote in Roman Urdu (Urdu typed using English letters). "
-        "You MUST reply in Roman Urdu using ONLY the English alphabet (Latin "
-        "letters a-z, A-Z). "
-        "STRICT RULES on the output script:\n"
-        "- DO NOT use Hindi / Devanagari characters (e.g. कैसे, अच्छा, हैं, क्या, मैं).\n"
-        "- DO NOT use Urdu / Arabic-script characters (e.g. کیسے, اچھا, ہیں, کیا).\n"
-        "- Every single character of your answer must be standard English "
-        "letters, digits, or punctuation — nothing outside basic ASCII.\n"
-        "STRICT RULES on VOCABULARY — use Urdu words (Persian/Arabic-origin), "
-        "NOT Hindi words (Sanskrit-origin). Roman Urdu is NOT the same as "
-        "Roman Hindi. Common Hindi words to AVOID and their Urdu replacements:\n"
-        "- 'sampark' (Hindi) -> use 'raabta' (e.g. 'raabta karne ke liye')\n"
-        "- 'vah' / 'yah' (Hindi) -> use 'woh' / 'yeh'\n"
-        "- 'dhanyavad' (Hindi) -> use 'shukriya'\n"
-        "- 'kripya' (Hindi) -> use 'meherbani' or 'baraye meherbani'\n"
-        "- 'prashn' (Hindi) -> use 'sawaal'\n"
-        "- 'uttar' (Hindi) -> use 'jawaab'\n"
-        "- 'samay' (Hindi) -> use 'waqt'\n"
-        "- 'karya' (Hindi) -> use 'kaam'\n"
-        "- 'vidyarthi' / 'chhatra' (Hindi) -> use 'talib-e-ilm' or just 'student'\n"
-        "- 'adhyapak' (Hindi) -> use 'ustaad' or 'professor'\n"
-        "- 'vishwavidyalaya' (Hindi) -> use 'university' or 'jamia'\n"
-        "- 'pradhan' / 'mukhya' (Hindi) -> use 'sadar' or 'aham'\n"
-        "- 'avashyak' (Hindi) -> use 'zaroori'\n"
-        "- 'praapt' (Hindi) -> use 'haasil'\n"
-        "- 'arambh' (Hindi) -> use 'shuru'\n"
-        "- 'samapt' (Hindi) -> use 'khatam'\n"
-        "GOOD example: 'Unse raabta karne ke liye unhein email karein. Woh "
-        "professor hain aur unka kaam ahem hai.'\n"
-        "BAD example (Hindi vocab — do NOT do this): 'Unse sampark karne ke "
-        "liye email karein. Vah professor hain aur unka karya mukhya hai.'\n"
-        "BAD example (wrong script — do NOT do this): 'आप कैसे हैं' or 'آپ کیسے ہیں'."
-    ),
-    "mixed": (
-        "The student mixed English and Roman Urdu. Reply in the same mixed "
-        "style — English where they used English, Roman Urdu where they used "
-        "Roman Urdu. Roman Urdu phrases MUST stay in English/Latin letters. "
-        "DO NOT use Hindi/Devanagari (e.g. कैसे). DO NOT use Urdu/Arabic "
-        "script (e.g. کیسے). Use ONLY ASCII characters in the entire reply. "
-        "For the Roman Urdu parts, use Urdu vocabulary (Persian/Arabic-origin), "
-        "NOT Hindi/Sanskrit vocabulary. Examples: use 'raabta' not 'sampark', "
-        "'woh' not 'vah', 'shukriya' not 'dhanyavad', 'sawaal' not 'prashn', "
-        "'jawaab' not 'uttar', 'waqt' not 'samay', 'kaam' not 'karya', "
-        "'zaroori' not 'avashyak', 'shuru' not 'arambh'."
-    ),
-}
+# English-only product — see LANGUAGE_INSTRUCTION's prior Roman-Urdu/mixed
+# branches (removed) in git history if multi-language support is ever
+# revisited. Kept as a short in-prompt reminder, same role the old
+# per-language dict lookup served.
+LANGUAGE_INSTRUCTION = "Respond in clear, natural English."
+_LANGUAGE_HINT = "Reply in clear, natural English."
 
-
-# Short, in-prompt language reminder. The full constraint block (script + vocab
-# rules) is already in the system message via LANGUAGE_INSTRUCTION — repeating
-# the 700-char version here split the 3B model's attention. One pointed line is
-# enough as a reminder at the answering step.
-_LANGUAGE_HINT = {
-    "en": "Reply in clear, natural English.",
-    "roman_urdu": (
-        "Reply in Roman Urdu (Latin letters a-z only — no Devanagari/Arabic "
-        "script). Use Urdu vocabulary (raabta, woh, shukriya, sawaal, jawaab, "
-        "kaam) — NOT Hindi (sampark, vah, dhanyavad, prashn, uttar, karya)."
-    ),
-    "mixed": (
-        "Reply in the same English + Roman Urdu mix the student used. "
-        "Roman Urdu parts: Latin letters only, Urdu vocabulary (raabta, woh, "
-        "shukriya) — NOT Hindi (sampark, vah, dhanyavad)."
-    ),
-}
-
-# Localized "I don't have that info" fallbacks used both as a guidance phrase
-# inside the prompt AND as the no-chunks return value in `ask`. Keeping them
-# in one place avoids the bug where a Roman-Urdu student got an English "I
-# don't have information about that" reply.
-NO_INFO_FALLBACK = {
-    "en": "I don't have information about that in my database.",
-    "roman_urdu": "Mujhe iss baare mein database mein koi maloomat nahi mili.",
-    "mixed": "I don't have information about that in my database.",
-}
+# Guidance phrase inside the prompt AND the no-chunks return value in `ask`.
+NO_INFO_FALLBACK = "I don't have information about that in my database."
 
 # Distinct from NO_INFO_FALLBACK above — that means "the knowledge base
 # doesn't have this," which is a real answer. This means "the LLM provider
@@ -116,11 +42,7 @@ NO_INFO_FALLBACK = {
 # searched and came up empty) or leaking the raw provider exception text
 # (which used to happen and could expose upstream HTTP bodies/stack details
 # to the chat UI) — see LLMUnavailableError below.
-LLM_UNAVAILABLE_MESSAGE = {
-    "en": "I'm having trouble reaching my AI service right now. Please try again in a few minutes, or file a query with your department.",
-    "roman_urdu": "Mujhe abhi apni AI service tak pohanchne mein masla ho raha hai. Baraye meherbani thori dair baad dobara koshish karein, ya apne department mein query file karein.",
-    "mixed": "I'm having trouble reaching my AI service right now. Please try again in a few minutes, or file a query with your department.",
-}
+LLM_UNAVAILABLE_MESSAGE = "I'm having trouble reaching my AI service right now. Please try again in a few minutes, or file a query with your department."
 
 
 class LLMUnavailableError(Exception):
@@ -130,8 +52,11 @@ class LLMUnavailableError(Exception):
     or internal exception text — only log it server-side."""
 
 
-DEFAULT_UNIVERSITY_NAME = "Muhammad Ali Jinnah University"
-DEFAULT_UNIVERSITY_SHORT = "MAJU"
+# Generic fallback when a caller doesn't supply tenant branding — kept
+# neutral (not a specific pilot university's name) so a misconfigured
+# request never silently identifies itself as the wrong school.
+DEFAULT_UNIVERSITY_NAME = "your university"
+DEFAULT_UNIVERSITY_SHORT = "the university"
 
 # Rev 5 §8's three-tier retrieval confidence, computed in `ask()` from the
 # top merged-search score (semantic + keyword) and surfaced through
@@ -159,7 +84,6 @@ def create_prompt(
     question,
     relevant_chunks,
     chunk_sources=None,
-    language="en",
     user_type="guest",
     confidence_tier="high",
     university_name=None,
@@ -196,8 +120,8 @@ def create_prompt(
         source_label = (meta or {}).get("source") or "unknown"
         blocks.append(f"[{i + 1} | source: {source_label} | updated: unknown]\n{chunk}")
     context = "\n\n---\n\n".join(blocks)
-    lang_hint = _LANGUAGE_HINT.get(language, _LANGUAGE_HINT["en"])
-    no_info = NO_INFO_FALLBACK.get(language, NO_INFO_FALLBACK["en"])
+    lang_hint = _LANGUAGE_HINT
+    no_info = NO_INFO_FALLBACK
 
     prompt = f"""CONTEXT FROM {uni_name.upper()} SOURCES (applies to the current question only — earlier turns are in the chat history above):
 {context}
@@ -215,12 +139,12 @@ B) IDENTITY QUESTION ("who are you", "what model are you", "are you ChatGPT/Gemi
    Say you are {uni_short} Assistant — the virtual helpdesk for {uni_name}. Do NOT name any AI model, company, or technology. 1-2 sentences.
 
 C) META / CONVERSATION QUESTION about THIS chat itself — examples:
-   - "what did I just ask?" / "mne abhi kia kaha"
-   - "do you remember my last question?" / "tmhe pta h mne kia pocha"
-   - "which program / topic are you discussing?" / "ye kis program ka bata rahe ho" / "kis ke baare mein baat ho rahi hai"
-   - "summarize our chat" / "hamari baat-cheet ka khulasa"
-   - "tell me more" / "aur batao"
-   - "explain that again" / "phir se samjhao"
+   - "what did I just ask?"
+   - "do you remember my last question?"
+   - "which program / topic are you discussing?"
+   - "summarize our chat"
+   - "tell me more"
+   - "explain that again"
    - "translate your last reply"
    For ANY of these, answer using the chat history above (the prior user/assistant turns). IGNORE the CONTEXT block — the retrieval may have pulled unrelated chunks; trust the conversation history instead. If there is no prior conversation, say so warmly.
 
@@ -257,7 +181,7 @@ F) DRAFT / COMPOSE / WRITE request ("draft an email", "write a leave application
 ALWAYS (applies to every branch):
 - {lang_hint}
 - Formatting: Bold (**email addresses**, **phone numbers**, **fee figures**, and **deadlines/dates**) so they stand out clearly.
-- Roman Urdu Phrasing: Keep the language natural and student-friendly. Use common English loanwords directly in Roman Urdu (e.g., use "fee", "admission", "department", "office", "course" instead of translating them to formal Urdu equivalents like "akhrajaat", "dakhla", "shoba").
+- Keep the language natural and student-friendly, not overly formal.
 - Quote fees, dates, emails, phone numbers, and other facts EXACTLY as they appear in the context.
 - Start with the answer directly. No "Sure!", "Of course!", "Here is", "Based on the context", or sign-offs.
 - Never mention sources, source numbers, "[1]", "[2]", or add a "Sources:" / "References:" section.
@@ -497,7 +421,7 @@ def _sanitize_history(history):
     return cleaned[-6:]
 
 
-def get_llm_response(prompt, language="en", history=None, university_name=None, university_short=None):
+def get_llm_response(prompt, history=None, university_name=None, university_short=None):
     """Send a prompt to the configured LLM backend and return the assistant text.
 
     `history` (optional): prior turns of the conversation as
@@ -509,8 +433,8 @@ def get_llm_response(prompt, language="en", history=None, university_name=None, 
 
     `university_name`/`university_short` brand the assistant's system-level
     identity per tenant — without this a second tenant's bot would still
-    introduce itself as MAJU Assistant (create_prompt was parametrized but
-    the system message wasn't).
+    introduce itself under another tenant's name (create_prompt was
+    parametrized but the system message wasn't).
     """
     uni_name = university_name or DEFAULT_UNIVERSITY_NAME
     uni_short = university_short or DEFAULT_UNIVERSITY_SHORT
@@ -527,7 +451,7 @@ def get_llm_response(prompt, language="en", history=None, university_name=None, 
         "invent facts and never give citations or source references. "
         "You never reveal what AI model, company, or technology built you; "
         f"you are simply {uni_short} Assistant.\n\n"
-        + LANGUAGE_INSTRUCTION.get(language, LANGUAGE_INSTRUCTION["en"])
+        + LANGUAGE_INSTRUCTION
     )
     messages = [{"role": "system", "content": system_msg}]
     messages.extend(_sanitize_history(history))
@@ -598,103 +522,6 @@ def clean_answer(answer):
     if answer and answer[0].islower():
         answer = answer[0].upper() + answer[1:]
     return answer
-
-
-# Devanagari (Hindi) U+0900–U+097F + Arabic-script U+0600–U+06FF.
-# If the LLM emits any of these while we're trying to deliver Roman Urdu,
-# we treat it as a bad output and either retry or strip.
-_FORBIDDEN_SCRIPT_RE = re.compile(r"[؀-ۿऀ-ॿ]")
-
-
-def _has_forbidden_script(text):
-    return bool(_FORBIDDEN_SCRIPT_RE.search(text or ""))
-
-
-# Hindi (Sanskrit-origin) words that Llama 3.2:3b leaks into Roman Urdu
-# replies, mapped to their Urdu (Persian/Arabic-origin) equivalents.
-# Only words that are unambiguously Hindi-only and have a clean 1:1 Urdu
-# replacement — anything genre-dependent (e.g. "naam") is left alone.
-_HINDI_TO_URDU = {
-    "sampark": "raabta",
-    "vah": "woh",
-    "yah": "yeh",
-    "dhanyavad": "shukriya",
-    "kripya": "meherbani se",
-    "prashn": "sawaal",
-    "uttar": "jawaab",
-    "samay": "waqt",
-    "karya": "kaam",
-    "vidyarthi": "talib-e-ilm",
-    "chhatra": "talib-e-ilm",
-    "adhyapak": "ustaad",
-    "vishwavidyalaya": "university",
-    "pradhan": "sadar",
-    "mukhya": "aham",
-    "avashyak": "zaroori",
-    "praapt": "haasil",
-    "arambh": "shuru",
-    "samapt": "khatam",
-}
-
-# Whole-word, case-insensitive, capitalization-preserving.
-_HINDI_WORD_RE = re.compile(
-    r"\b(" + "|".join(re.escape(w) for w in _HINDI_TO_URDU) + r")\b",
-    re.IGNORECASE,
-)
-
-
-def _replace_hindi_words(text):
-    """Swap Hindi-origin words for Urdu equivalents, preserving capitalization."""
-    if not text:
-        return text
-
-    def _sub(match):
-        original = match.group(0)
-        replacement = _HINDI_TO_URDU[original.lower()]
-        if original[0].isupper():
-            return replacement[0].upper() + replacement[1:]
-        return replacement
-
-    return _HINDI_WORD_RE.sub(_sub, text)
-
-
-def _retry_in_roman_urdu(prompt, language, history=None):
-    """Re-call Ollama with a sterner instruction after a script slip-up.
-
-    Llama 3.2:3b sometimes ignores the "no Devanagari" rule on first try.
-    A retry with a more emphatic system message succeeds far more often
-    than tweaking temperature would. History is preserved so the model
-    keeps conversational continuity even on the retry.
-    """
-    sterner = (
-        "CRITICAL OVERRIDE: Your previous reply used Hindi (Devanagari) or "
-        "Urdu (Arabic-script) characters. That is FORBIDDEN. "
-        "Re-write the answer in Roman Urdu using ONLY standard English/Latin "
-        "letters (a–z, A–Z), digits, and punctuation. "
-        "Every character must be in ASCII range 0–127. No exceptions.\n\n"
-        + LANGUAGE_INSTRUCTION.get(language, LANGUAGE_INSTRUCTION["roman_urdu"])
-    )
-    try:
-        messages = [{"role": "system", "content": sterner}]
-        messages.extend(_sanitize_history(history))
-        messages.append({"role": "user", "content": prompt})
-        return _llm_chat(
-            messages,
-            temperature=0.1,  # tighter than default so it follows the rule
-            max_tokens=config.LLM_MAX_TOKENS,
-        )
-    except Exception as exc:
-        print(f"  retry_in_roman_urdu failed: {exc}")
-        return ""
-
-
-def _strip_forbidden_script(text):
-    """Last resort: remove any Devanagari/Arabic-script runs from the text.
-
-    Better a slightly-truncated answer than one full of Hindi characters
-    when the user explicitly typed Roman Urdu.
-    """
-    return _FORBIDDEN_SCRIPT_RE.sub("", text or "").strip()
 
 
 # =============================================================
@@ -773,23 +600,19 @@ def _initialize(tenant_slug=None):
 
 
 # Markers that signal a question is an ELLIPTICAL follow-up — it leans on the
-# previous turn for its subject ("or fee?", "aur iska deadline?", "what about
-# BSCS?"). For these, and ONLY these, we prepend the prior user turn to the
-# retrieval query. A self-contained question like "Admission requirements?"
-# carries its own subject and must NOT be prepended, otherwise the previous
-# turn's topic ("what programs...") dominates the embedding and buries the
-# chunks that actually answer it.
+# previous turn for its subject ("or fee?", "what about BSCS?"). For these,
+# and ONLY these, we prepend the prior user turn to the retrieval query. A
+# self-contained question like "Admission requirements?" carries its own
+# subject and must NOT be prepended, otherwise the previous turn's topic
+# ("what programs...") dominates the embedding and buries the chunks that
+# actually answer it.
 _ELLIPTICAL_PREFIXES = (
     "or ", "and ", "also ", "plus ", "what about", "how about", "whatabout",
-    "aur ", "ya ", "phir ", "to ", "tou ", "ab ",
 )
 # Back-reference pronouns that, when present, mean the subject lives in history.
 _BACKREF_WORDS = {
     "it", "its", "it's", "they", "them", "their", "this", "that", "these",
     "those", "one", "same",
-    # Roman-Urdu pronouns / referents
-    "iska", "iski", "isko", "ispe", "uska", "uski", "usko", "uspe",
-    "inka", "inki", "unka", "unki", "yeh", "ye", "woh", "wo",
 }
 
 
@@ -942,7 +765,6 @@ def _retrieve_listing_context(tenant_slug, retrieval_query, user_type):
 def ask(
     question,
     tenant_slug=None,
-    language="en",
     history=None,
     user_type="guest",
     university_name=None,
@@ -954,10 +776,6 @@ def ask(
     required for correct multi-tenant behavior; `None` falls back to the
     legacy single-tenant (MAJU) collection for any caller not yet updated.
 
-    `language` should be one of "en", "roman_urdu", "mixed" — it controls the
-    language of the generated answer. The retrieval step is language-agnostic
-    (English embeddings handle Roman-Urdu queries acceptably for our corpus).
-
     `history` (optional): prior chat turns as [{role, content}, ...] oldest
     first. Used for two things: (1) passed to the LLM so it can resolve
     follow-ups conversationally, and (2) the latest prior user turn is
@@ -965,7 +783,7 @@ def ask(
     pull topic-relevant chunks instead of generic ones.
 
     `user_type` ("guest" | "student") and `university_name`/`university_short`
-    (tenant branding, falls back to the MAJU defaults if not supplied) feed
+    (tenant branding, falls back to the generic defaults if not supplied) feed
     the Rev 5 §8.7.6 prompt template.
 
     Returns a dict: {"answer": str, "confidence_tier": "high"|"medium"|"low"}.
@@ -1026,7 +844,7 @@ def ask(
 
     if not chunks:
         return {
-            "answer": NO_INFO_FALLBACK.get(language, NO_INFO_FALLBACK["en"]),
+            "answer": NO_INFO_FALLBACK,
             "confidence_tier": "low",
         }
 
@@ -1034,7 +852,6 @@ def ask(
         question,
         chunks,
         chunk_sources=sources,
-        language=language,
         user_type=user_type,
         confidence_tier=confidence_tier,
         university_name=university_name,
@@ -1043,7 +860,6 @@ def ask(
     try:
         answer = get_llm_response(
             prompt,
-            language=language,
             history=history,
             university_name=university_name,
             university_short=university_short,
@@ -1056,34 +872,10 @@ def ask(
         # chatbot-handoff/"file a query" offer exactly when it's needed
         # most. Force a safe canned message and low confidence instead.
         return {
-            "answer": LLM_UNAVAILABLE_MESSAGE.get(language, LLM_UNAVAILABLE_MESSAGE["en"]),
+            "answer": LLM_UNAVAILABLE_MESSAGE,
             "confidence_tier": "low",
         }
     cleaned = clean_answer(answer)
-
-    # Layer-C script guard: if we asked for Roman Urdu / mixed and Llama
-    # emitted Devanagari (Hindi) or Urdu-Arabic characters, retry once
-    # with a sterner prompt. If still bad, strip the offending characters
-    # rather than ship a broken-script reply.
-    if language in ("roman_urdu", "mixed") and _has_forbidden_script(cleaned):
-        print(f"  Script slip-up in /ask reply; retrying ({language})")
-        retried = _retry_in_roman_urdu(prompt, language, history=history)
-        retried = clean_answer(retried)
-        if retried and not _has_forbidden_script(retried):
-            cleaned = retried
-        else:
-            # Retry also failed — strip the bad characters from whichever
-            # response was longer so the user gets the most context possible.
-            candidate = retried if len(retried or "") > len(cleaned or "") else cleaned
-            cleaned = _strip_forbidden_script(candidate) or cleaned
-
-    # Layer-D vocabulary guard: even with the right script, Llama 3.2:3b
-    # often picks Sanskrit-origin Hindi words ("sampark", "vah", "karya")
-    # over Persian/Arabic-origin Urdu ones ("raabta", "woh", "kaam").
-    # We do a plain word-substitution pass — cheaper and more deterministic
-    # than another retry round.
-    if language in ("roman_urdu", "mixed"):
-        cleaned = _replace_hindi_words(cleaned)
 
     # The retrieval score only measures how strongly something was found —
     # not whether it actually answers THIS question, so a genuinely
@@ -1093,7 +885,7 @@ def ask(
     # signal for §4.2's handoff gating: force the tier to "low" regardless
     # of what the raw score said, so the "file a query" offer actually
     # appears for every question the bot didn't answer.
-    if cleaned.strip() == NO_INFO_FALLBACK.get(language, NO_INFO_FALLBACK["en"]).strip():
+    if cleaned.strip() == NO_INFO_FALLBACK.strip():
         confidence_tier = "low"
 
     return {"answer": cleaned, "confidence_tier": confidence_tier}
