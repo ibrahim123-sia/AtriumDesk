@@ -51,13 +51,12 @@ server/uploads/
 doc/
 docs/
 
-# Python
+# Python (venv/.venv already cover a virtualenv's own Lib/Scripts/Include —
+# those must NOT be listed bare here: Windows git matches gitignore
+# case-insensitively, so a bare "Scripts/" also swallows server/scripts/)
 venv/
 .venv/
 .env/
-Lib/
-Scripts/
-Include/
 __pycache__/
 *.pyc
 *.pyo
