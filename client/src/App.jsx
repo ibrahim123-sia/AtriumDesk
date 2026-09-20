@@ -6,6 +6,8 @@ import MainLayout from "./components/layouts/MainLayout";
 import Login from "./auth/Login";
 import Register from "./auth/Register";
 import Unsubscribe from "./Unsubscribe";
+import Privacy from "./legal/Privacy";
+import Terms from "./legal/Terms";
 import ProtectedPlatformRoute from "./platform/ProtectedPlatformRoute";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import ChatPage from "./student/pages/ChatPage";
@@ -166,6 +168,8 @@ const App = () => {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/unsubscribe" element={<Unsubscribe />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
         <Route path="/platform/login" element={<PlatformLogin />} />
 
         {/* Super Admin — deliberately its own tree, never nested inside the
