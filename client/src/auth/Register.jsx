@@ -144,7 +144,7 @@ const Register = () => {
               theme === "dark" ? "text-[#8FB0AA]" : "text-[#53716C]"
             }`}
           >
-            Join thousands of MAJU students using AI to simplify university life
+            Join thousands of students using AI to simplify university life
           </p>
         </div>
 
@@ -167,7 +167,7 @@ const Register = () => {
               }`}
             >
               {step === 1
-                ? "Register with your MAJU email to get started"
+                ? "Register with your university email to get started"
                 : "Enter the 6-digit code sent to your email"}
             </p>
 

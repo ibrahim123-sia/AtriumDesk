@@ -8,7 +8,15 @@ import { fetchSaved, saveListing, unsaveListing } from "../../redux/slices/saved
 import MatchedListingCard from "../components/MatchedListingCard";
 import { getPalette } from "../../administrator/utils/palette";
 
-const SCHOLARSHIPS = [
+// Generic concession *types* common across universities — copy is
+// templated with this tenant's own name/short name (falling back to a
+// neutral "your university" when branding hasn't loaded yet) so a second
+// tenant never sees MAJU's name here. The set of categories itself is
+// still a shared default list, not per-tenant configurable data; a tenant
+// wanting different categories/amounts would need these modeled as
+// Listing records (scope: "internal") the same way external scholarships
+// already are — that's a bigger backend change than this template fix.
+const getScholarships = (uniShort, uniName) => [
   {
     id: "merit",
     title: "Merit-Based Scholarship",
@@ -30,24 +38,24 @@ const SCHOLARSHIPS = [
     title: "Sibling Concession",
     category: "Concessions",
     icon: Users,
-    eligibility: "For students whose brother or sister is currently enrolled at MAJU.",
-    details: "25% concession on tuition fees for the second sibling currently studying at Muhammad Ali Jinnah University.",
+    eligibility: `For students whose brother or sister is currently enrolled at ${uniShort}.`,
+    details: `25% concession on tuition fees for the second sibling currently studying at ${uniName}.`,
   },
   {
     id: "kinship",
     title: "Kinship Concession",
     category: "Concessions",
     icon: Users,
-    eligibility: "For children or siblings of MAJU alumni, faculty, or staff.",
-    details: "25% tuition fee concession as a token of appreciation for families associated with the MAJU community.",
+    eligibility: `For children or siblings of ${uniShort} alumni, faculty, or staff.`,
+    details: `25% tuition fee concession as a token of appreciation for families associated with the ${uniShort} community.`,
   },
   {
     id: "alumni-pg",
-    title: "MAJU Alumni PG Scholarship",
+    title: `${uniShort} Alumni PG Scholarship`,
     category: "Academic",
     icon: GraduationCap,
-    eligibility: "MAJU graduates seeking admission in MS / Postgraduate programs.",
-    details: "50% tuition fee waiver for all alumni of Muhammad Ali Jinnah University continuing their education in Master's programs.",
+    eligibility: `${uniShort} graduates seeking admission in MS / Postgraduate programs.`,
+    details: `50% tuition fee waiver for all alumni of ${uniName} continuing their education in Master's programs.`,
   },
   {
     id: "hec-external",
@@ -72,7 +80,7 @@ const Scholarship = () => {
 
   // Rev 5 §6.2 — external scholarships (MS-abroad opportunities), scraped
   // from real portals via the Phase 4 pipeline. Kept separate from the
-  // static MAJU-internal concessions grid below — different data source,
+  // static tenant-internal concessions grid below — different data source,
   // different purpose (external opportunities vs this university's own aid).
   useEffect(() => {
     if (externalView !== "browse") return;
@@ -96,6 +104,9 @@ const Scholarship = () => {
   };
 
   const C = getPalette(isDark, tenantBranding);
+  const uniShort = tenantBranding?.universityShort || "your university";
+  const uniName = tenantBranding?.universityName || uniShort;
+  const SCHOLARSHIPS = getScholarships(uniShort, uniName);
 
   const filtered = SCHOLARSHIPS.filter(
     (s) =>
@@ -113,7 +124,7 @@ const Scholarship = () => {
           <div>
             <h1 className="text-2xl font-bold" style={{ color: C.text }}>Scholarships & Financial Aid</h1>
             <p className="text-sm mt-1" style={{ color: C.muted }}>
-              Explore financial support opportunities and academic awards at MAJU
+              Explore financial support opportunities and academic awards at {uniShort}
             </p>
           </div>
           <Link
@@ -246,7 +257,7 @@ const Scholarship = () => {
         </div>
 
         <div className="border-t pt-2" style={{ borderColor: C.border }}>
-          <h2 className="text-lg font-semibold" style={{ color: C.text }}>MAJU financial aid & concessions</h2>
+          <h2 className="text-lg font-semibold" style={{ color: C.text }}>{uniShort} financial aid & concessions</h2>
           <p className="text-xs mt-0.5 mb-3" style={{ color: C.muted }}>University-specific scholarships and fee concessions</p>
         </div>
 
