@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 48" width="180" height="48">
+  <rect width="40" height="40" y="4" rx="8" fill="#1E2A66"/>
+  <rect x="6" y="38" width="28" height="2.5" rx="1.25" fill="#E63027"/>
+  <text x="20" y="29" font-family="Poppins, 'Helvetica Neue', Arial, sans-serif" font-weight="700" font-size="20" fill="#FFFFFF" text-anchor="middle">M</text>
+  <text x="50" y="30" font-family="Poppins, 'Helvetica Neue', Arial, sans-serif" font-weight="600" font-size="20" fill="currentColor" letter-spacing="-0.3">UniAssist</text>
+</svg>

@@ -1,0 +1,122 @@
+
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark,.dark *));
+
+*{
+    font-family: "DM Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+
+/* Browsers default a plain <button> to cursor: default, not pointer — only
+   links get the hand cursor automatically. Every clickable button in this
+   app relies on hover feedback to read as clickable, so this is applied
+   globally rather than one className at a time; a real :disabled button
+   still correctly shows not-allowed. */
+button:not(:disabled) {
+    cursor: pointer;
+}
+h1, h2, h3{
+    font-family: "Bricolage Grotesque", -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+}
+
+@theme{
+    /* ===== Majlis Ocean Teal — the platform's default brand, light theme =====
+       Locked 2026-09-05 (see uniassist-super-admin.html / uniassist-student-
+       portal.html, the source of truth — this file's values are copied
+       verbatim from their :root block, not approximated). This is the
+       PLATFORM DEFAULT: an individual tenant's own branding.primaryColor
+       (client/src/utils/palette.js) overrides `--color-brand-primary` for
+       that tenant's own users, same idea as any other white-label SaaS. */
+    --color-brand-primary: #0D9488;
+    --color-brand-primary-hover: #0B7A70;
+    --color-brand-primary-dark: #065F56;
+    --color-brand-primary-soft: #D9F2EE;
+    --color-brand-accent: #4E9128;
+    --color-brand-accent-soft: #E7F4D9;
+
+    /* Light surfaces */
+    --color-brand-bg: #F3F8F7;
+    --color-brand-surface: #FFFFFF;
+    --color-brand-surface-2: #E9F2F0;
+    --color-brand-surface-3: #DCEAE7;
+    --color-brand-text: #0F2E2A;
+    --color-brand-text-2: #3A5B56;
+    --color-brand-muted: #53716C;
+    --color-brand-border: #D9E7E4;
+    --color-brand-border-2: #C6DCD7;
+
+    /* Status colors (shared across light/dark) */
+    --color-ok: #2C7A4C;
+    --color-ok-soft: #E2F1E8;
+    --color-warn: #9C5A12;
+    --color-warn-soft: #F8EDDD;
+    --color-info: #1D6A8F;
+    --color-info-soft: #E1EFF6;
+    --color-danger: #A6362B;
+    --color-danger-soft: #FBE7E4;
+    --color-purple: #6A4EA6;
+    --color-purple-soft: #EDE7F6;
+
+    /* ===== Ocean Teal after dark — dark theme =====
+       No dark palette exists in the locked mockups (they only have a
+       decorative, non-functional theme toggle) — this is an original
+       derivation, not an extraction: same structure as the light theme,
+       deep teal-black surfaces, primary brightened so it still pops on a
+       dark background, accent kept in the same olive-green family as light
+       mode rather than an unrelated hue. */
+    --color-night-bg: #0A1614;
+    --color-night-surface: #0F2320;
+    --color-night-elevated: #152E2A;
+    --color-night-input: #081210;
+    --color-night-border: #1E3A35;
+    --color-night-text: #E8F5F2;
+    --color-night-muted: #8FB0AA;
+    --color-night-accent: #14B8A6;
+    --color-night-highlight: #84CC16;
+    --color-night-bubble-user: #152E2A;
+
+    /* Back-compat alias */
+    --color-primary: #0D9488;
+
+    /* Radii + shadows, verbatim from the locked mockups */
+    --radius-brand-sm: 8px;
+    --radius-brand: 12px;
+    --radius-brand-lg: 18px;
+    --radius-brand-pill: 999px;
+}
+
+html, body{
+    background-color: var(--color-brand-bg);
+    color: var(--color-brand-text);
+}
+html.dark, html.dark body{
+    background-color: var(--color-night-bg);
+    color: var(--color-night-text);
+}
+
+::-webkit-scrollbar{
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track{
+    background: transparent;
+}
+::-webkit-scrollbar-thumb{
+    background: var(--color-brand-border);
+    border-radius: 3px;
+}
+html.dark ::-webkit-scrollbar-thumb{
+    background: var(--color-night-border);
+}
+
+.reset-tw:not(pre):not(code){
+    all: revert;
+}
+
+.loader div:nth-child(2){
+    animation-delay: 0.2s;
+}
+.loader div:nth-child(3){
+    animation-delay: 0.4s;
+}
