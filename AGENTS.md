@@ -1,6 +1,6 @@
 # UniAssist — Master Specification (Complete)
 
-Single file containing the full, unabridged text of every planning document produced for UniAssist FYP-2, in one place, so nothing has to be cross-referenced across separate PDFs. This file is the complete reference; a separate well-structured PDF (`UniAssist_FYP2_Spec_Rev7_Final.pdf` regenerated from this same source) is the human-readable presentation of the same content.
+Single file containing the full, unabridged text of every planning document produced for UniAssist FYP-2, in one place, so nothing has to be cross-referenced across separate PDFs. This file is the complete reference; a separate well-structured PDF (`doc/Guide.pdf`, regenerated from this same source) is the human-readable presentation of the same content.
 
 ## How to read this file — precedence when parts disagree
 
@@ -1980,7 +1980,7 @@ Nothing here is settled; don't architect around it yet.
 
 # PART D — Rev 7: Consolidated Critical Review & Final Decisions (original, complete)
 
-*Preserved in full from `UniAssist_FYP2_Spec_Rev7_Final.pdf`. This is the most current layer — where it disagrees with Parts A/B/C, Part D governs.*
+*Preserved in full from `doc/Guide.pdf`. This is the most current layer — where it disagrees with Parts A/B/C, Part D governs.*
 
 UniAssist FYP-2 Spec — Rev 7 (Final)
 End-to-end consolidation of Rev 5 + Rev 6, the SaaS/Super-Admin pivot, and an independent
