@@ -5,7 +5,7 @@
 ![Node.js](https://img.shields.io/badge/Backend-Node.js-339933?style=flat&logo=nodedotjs)
 ![Python](https://img.shields.io/badge/AI-Python-3776AB?style=flat&logo=python)
 
-AtriumDesk is a full-stack AI-powered platform that consolidates university student services into one intelligent system, built database-per-tenant so any university can be onboarded — not just MAJU. At its core is a smart chatbot (RAG over each tenant's own scraped website content) that supports voice input and Roman Urdu — making university help accessible to every student. There is no mobile app; the client is a responsive web app with an offline-capable PWA shell.
+AtriumDesk is a full-stack AI-powered platform that consolidates university student services into one intelligent system, built database-per-tenant so any university can be onboarded — not just MAJU. At its core is a smart chatbot (RAG over each tenant's own scraped website content) with voice input support — making university help accessible to every student. There is no mobile app; the client is a responsive web app with an offline-capable PWA shell.
 
 ---
 
@@ -16,7 +16,7 @@ AtriumDesk is a full-stack AI-powered platform that consolidates university stud
 |--------|--------|-------------|
 | **Guest Page** | ✅ | Public landing page showcasing portal features before login |
 | **Auth** | ✅ | Register / login with MAJU email, OTP verification, password recovery |
-| **AI Chatbot** | ✅ | Answers university queries via RAG over MAJU website; voice input + Roman Urdu support; profanity filter with admin flagging |
+| **AI Chatbot** | ✅ | Answers university queries via RAG over MAJU website; voice input support; profanity filter with admin flagging |
 | **Issue Tracker** | ✅ | Submit and track support requests with attachments; 20s polling sync with department staff; in-app bell + email notifications |
 | **Job Portal** | ✅ | Scraped + manually-entered listings, hard-rule + embedding-based matching, skill-gap analysis against an uploaded CV |
 | **Scholarship Portal** | ✅ | Scraped + manually-entered listings, CGPA-aware matching, cached LLM match explanations |
@@ -191,7 +191,7 @@ AtriumDesk/
 │   ├── api.py                    # /ask + admin /chunks + /documents
 │   ├── rag.py                    # RAG pipeline (Groq/Gemini/Ollama, confidence tiering)
 │   ├── database.py               # ChromaDB ops (one collection per tenant)
-│   ├── moderation.py             # English + Roman-Urdu profanity check
+│   ├── moderation.py             # English + Roman-Urdu profanity check (safety filter — kept even though the chatbot replies in English only)
 │   ├── scraper.py                # self-service per-tenant website scraper
 │   └── chroma_db/                # persistent vector store (gitignored)
 ```

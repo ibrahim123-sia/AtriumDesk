@@ -1,116 +1,94 @@
 {
-  "_comment": "Rev 5 §13.2 golden set — ~20-25 representative questions with known-good expected answers, sourced by asking the real /ask endpoint against the live MAJU knowledge base (not invented) and recording what came back on 2026-09-05. Re-verify any entry manually if the underlying source content changes. English, Roman Urdu, and mixed are all represented, plus multi-turn sequences per §8.8.1 (elliptical follow-ups). Scoring is deliberately simple keyword containment, not RAGAS — per §13.2: 'the golden set is the valuable part, the tooling is secondary'.",
+  "_comment": "Rev 5 §13.2 golden set — ~20-25 representative questions with known-good expected answers, sourced by asking the real /ask endpoint against the live MAJU knowledge base (not invented) and recording what came back on 2026-09-05. Re-verify any entry manually if the underlying source content changes. English-only (the product no longer supports Roman Urdu replies), plus multi-turn sequences per §8.8.1 (elliptical follow-ups). Scoring is deliberately simple keyword containment, not RAGAS — per §13.2: 'the golden set is the valuable part, the tooling is secondary'.",
   "tenant_slug": "maju",
   "cases": [
     {
       "id": "en-fee-bachelor",
       "type": "single",
-      "language": "en",
       "question": "What is the fee structure for Bachelor programs?",
       "expected_keywords": ["10,000", "9,000"]
     },
     {
       "id": "en-admission-documents",
       "type": "single",
-      "language": "en",
       "question": "What documents are required at the time of admission?",
       "expected_keywords": ["CNIC", "testimonials", "photographs"]
     },
     {
       "id": "en-hec-recognition",
       "type": "single",
-      "language": "en",
       "question": "Is MAJU recognized by HEC?",
       "expected_keywords": ["Yes", "HEC"]
     },
     {
       "id": "en-degree-areas",
       "type": "single",
-      "language": "en",
       "question": "In which areas does MAJU offer degrees?",
       "expected_keywords": ["Computer Science", "Software Engineering"]
     },
     {
       "id": "en-scholarships",
       "type": "single",
-      "language": "en",
       "question": "Does MAJU offer any scholarships?",
       "expected_keywords": ["Merit", "Scholarship"]
     },
     {
       "id": "en-attendance-requirement",
       "type": "single",
-      "language": "en",
       "question": "What is the attendance requirement to sit in the final exam?",
       "expected_keywords": ["80%"]
     },
     {
       "id": "en-credit-hours-bs",
       "type": "single",
-      "language": "en",
       "question": "How many credit hours are required to complete a BS program?",
       "expected_keywords": ["134"]
     },
     {
       "id": "en-hostel",
       "type": "single",
-      "language": "en",
       "question": "Is there a hostel or dormitory facility at MAJU?",
       "expected_keywords": ["Yes", "hostel"]
     },
     {
       "id": "en-probation-cgpa",
       "type": "single",
-      "language": "en",
       "question": "What is the minimum CGPA required to avoid academic probation?",
       "expected_keywords": ["3.0"]
     },
     {
       "id": "en-admissions-contact",
       "type": "single",
-      "language": "en",
       "question": "How can I contact the admissions office?",
       "expected_keywords": ["admissions@jinnah.edu"]
     },
     {
       "id": "en-out-of-kb-campus-address",
       "type": "single",
-      "language": "en",
       "expect_no_info": true,
       "question": "What is MAJU's campus address?"
     },
     {
-      "id": "roman-urdu-campus-location",
+      "id": "en-fee-cs",
       "type": "single",
-      "language": "roman_urdu",
-      "expect_no_info": true,
-      "question": "MAJU ka campus kahan hai?"
-    },
-    {
-      "id": "roman-urdu-fee-cs",
-      "type": "single",
-      "language": "roman_urdu",
-      "question": "Fee kitni hai BS Computer Science ki?",
+      "question": "What is the fee for BS Computer Science?",
       "expected_keywords": ["10,000"]
     },
     {
-      "id": "roman-urdu-evening-classes",
+      "id": "en-evening-classes",
       "type": "single",
-      "language": "roman_urdu",
-      "question": "Kya MAJU mein evening classes hoti hain?",
-      "expected_keywords": ["Haan", "06:15", "evening"]
+      "question": "Does MAJU have evening classes?",
+      "expected_keywords": ["Yes", "06:15", "evening"]
     },
     {
       "id": "en-ms-eligibility",
       "type": "single",
-      "language": "en",
       "question": "What is the eligibility criteria for MS admission?",
       "expected_keywords": ["16 years", "CGPA"]
     },
     {
       "id": "en-out-of-kb-admission-deadline",
       "type": "single",
-      "language": "en",
       "expect_no_info": true,
       "question": "What is the last date to submit the admission form?"
     },
@@ -120,30 +98,26 @@
       "notes": "Standalone-then-elliptical-followup: second turn depends on the first turn's topic (§8.8.1) without repeating 'fee' or 'program' explicitly.",
       "turns": [
         {
-          "language": "en",
           "question": "What is the fee structure for Bachelor programs?",
           "expected_keywords": ["10,000"]
         },
         {
-          "language": "en",
           "question": "What about Masters programs?",
           "expected_keywords": ["MBA", "10,000"]
         }
       ]
     },
     {
-      "id": "seq-degree-levels-then-mixed-admission-followup",
+      "id": "seq-degree-levels-then-admission-followup",
       "type": "sequence",
-      "notes": "English opener, mixed-language elliptical follow-up — exercises both the follow-up retrieval path and the mixed-language reply path in one sequence.",
+      "notes": "Elliptical follow-up — exercises the follow-up retrieval path.",
       "turns": [
         {
-          "language": "en",
           "question": "MAJU offers what degree levels?",
           "expected_keywords": ["BS", "MS"]
         },
         {
-          "language": "mixed",
-          "question": "aur admission ke liye kya required hai",
+          "question": "and what's required for admission",
           "expected_keywords": ["CNIC"],
           "notes": "CGPA eligibility is sometimes summarized out of this broad follow-up (verified by re-running) — CNIC is the one document consistently present across repeat runs, so it's the stable regression signal for 'did the follow-up retrieve admission-requirement content at all'."
         }

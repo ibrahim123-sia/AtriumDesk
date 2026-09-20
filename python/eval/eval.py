@@ -41,12 +41,11 @@ if hasattr(sys.stdout, "reconfigure"):
 
 GOLDEN_SET_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "golden_set.json")
 
-# Mirrors rag.py's NO_INFO_FALLBACK strings — kept as a substring check
+# Mirrors rag.py's NO_INFO_FALLBACK string — kept as a substring check
 # rather than an import so this script never depends on the server's
 # internals, only its HTTP contract.
 NO_INFO_MARKERS = [
     "don't have information",
-    "koi maloomat nahi",
 ]
 
 
@@ -55,13 +54,12 @@ def load_golden_set():
         return json.load(f)
 
 
-def ask(api_base, tenant_slug, question, language, history=None):
+def ask(api_base, tenant_slug, question, history=None):
     resp = requests.post(
         f"{api_base}/ask",
         json={
             "question": question,
             "tenant_slug": tenant_slug,
-            "language": language,
             "history": history or [],
         },
         # /ask now requires the same internal-secret header every other
@@ -95,7 +93,7 @@ def score_answer(answer, expected_keywords=None, expect_no_info=False):
 
 
 def run_single_case(api_base, tenant_slug, case):
-    answer = ask(api_base, tenant_slug, case["question"], case["language"])
+    answer = ask(api_base, tenant_slug, case["question"])
     passed, matched, missed = score_answer(
         answer,
         expected_keywords=case.get("expected_keywords", []),
@@ -116,7 +114,7 @@ def run_sequence_case(api_base, tenant_slug, case):
     turn_results = []
     all_passed = True
     for i, turn in enumerate(case["turns"]):
-        answer = ask(api_base, tenant_slug, turn["question"], turn["language"], history=history)
+        answer = ask(api_base, tenant_slug, turn["question"], history=history)
         passed, matched, missed = score_answer(
             answer,
             expected_keywords=turn.get("expected_keywords", []),

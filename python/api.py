@@ -50,7 +50,6 @@ import config         # Application configurations and global settings
 import rag            # Retrieval Augmented Generation pipeline
 import database       # ChromaDB operations and search queries
 from moderation import check_message  # Urdu and English abuse detection filter
-from language_detect import detect_language, normalize_for_prompt  # Language classifier
 from transcribe import transcribe_audio  # Local Whisper speech-to-text transcription
 
 load_dotenv()
@@ -222,10 +221,6 @@ class ModerationBody(BaseModel):
     text: str
 
 
-class LanguageBody(BaseModel):
-    text: str
-
-
 # =============================================================
 # /ASK — Public RAG with moderation
 # =============================================================
@@ -233,10 +228,6 @@ class LanguageBody(BaseModel):
 WARNING_RESPONSE = (
     "I noticed inappropriate language in your message. Please rephrase your "
     "question respectfully so I can help you."
-)
-WARNING_RESPONSE_URDU = (
-    "Aap ke message mein na-munasib alfaaz hain. Baraye meherbani apna sawal "
-    "tameez se dobara likhein taa-ke main madad kar sakun."
 )
 
 
@@ -266,19 +257,15 @@ def ask_question(request: QuestionRequest):
     # encode + blocking LLM HTTP calls), so an async handler would block
     # the event loop for the whole round-trip and serialize every
     # concurrent request. Starlette runs sync handlers in its threadpool.
-    detected = detect_language(request.question)
-    lang = normalize_for_prompt(detected["language"])
-
     moderation = check_message(request.question)
     if moderation["flagged"]:
         if request.user_id:
             _flag_user(request.user_id, request.question, moderation["matches"], request.chat_id, request.tenant_slug)
-        warning = WARNING_RESPONSE_URDU if lang == "roman_urdu" else WARNING_RESPONSE
         return AnswerResponse(
-            answer=warning,
+            answer=WARNING_RESPONSE,
             flagged=True,
             matches=moderation["matches"],
-            language=detected["language"],
+            language=moderation["language"],
         )
 
     history_payload = (
@@ -286,13 +273,12 @@ def ask_question(request: QuestionRequest):
         if request.history else None
     )
     if history_payload:
-        print(f"  /ask received {len(history_payload)} prior turns ({lang}, tenant={request.tenant_slug})")
+        print(f"  /ask received {len(history_payload)} prior turns (tenant={request.tenant_slug})")
     else:
-        print(f"  /ask no history attached ({lang}, tenant={request.tenant_slug})")
+        print(f"  /ask no history attached (tenant={request.tenant_slug})")
     result = rag.ask(
         request.question,
         tenant_slug=request.tenant_slug,
-        language=lang,
         history=history_payload,
         user_type=request.user_type,
         university_name=request.university_name,
@@ -301,7 +287,6 @@ def ask_question(request: QuestionRequest):
     return AnswerResponse(
         answer=result["answer"],
         flagged=False,
-        language=detected["language"],
         confidence_tier=result["confidence_tier"],
         usage=rag.get_last_usage(),
     )
@@ -310,12 +295,6 @@ def ask_question(request: QuestionRequest):
 @app.post("/moderation/check")
 async def moderation_check(body: ModerationBody):
     return check_message(body.text)
-
-
-@app.post("/language/detect")
-async def language_detect(body: LanguageBody):
-    """Public language classifier — used by Node or the client when needed."""
-    return detect_language(body.text)
 
 
 # =============================================================
@@ -483,13 +462,15 @@ async def explain_match_endpoint(request: ExplainMatchRequest):
 @app.post("/transcribe")
 async def transcribe(
     file: UploadFile = File(...),
-    language: Optional[str] = Form(None),
+    language: Optional[str] = Form("en"),
 ):
     """Transcribe an uploaded audio file with local Whisper.
 
     Accepts webm / wav / mp3 / ogg / m4a. The audio is written to a temp
     file because faster-whisper reads from disk (it shells out to ffmpeg
-    under the hood for non-WAV formats).
+    under the hood for non-WAV formats). `language` defaults to English —
+    this is an English-only product, so we don't want Whisper auto-detecting
+    the audio as Urdu/Hindi script for what is really an English utterance.
     """
     content = await file.read()
     if not content:

@@ -48,9 +48,6 @@ huggingface-hub==1.8.0         # Model downloads from HuggingFace
 ollama>=0.3.0                 # Local Llama 3.2 via Ollama daemon (http://localhost:11434) — used when USE_LOCAL_LLM=true
 groq>=0.11.0                  # Cloud LLM fallback — used when USE_LOCAL_LLM=false (requires GROQ_API_KEY)
 
-# --- Language Detection ---
-langdetect>=1.0.9             # Proper-script language detection; paired with a Roman-Urdu lexicon scorer
-
 # --- Speech-to-Text (local, replaces AssemblyAI) ---
 faster-whisper>=1.0.0         # CTranslate2-powered Whisper, CPU-friendly. Model is auto-downloaded on first use.
 
