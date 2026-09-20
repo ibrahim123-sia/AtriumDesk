@@ -1,0 +1,84 @@
+# ===========================================
+# Python Dependencies for University RAG System
+# ===========================================
+# Install with: pip install -r requirements.txt
+#
+# Phase 0 note (2026-09-05): every exact-pinned version below was rewritten
+# to match what is actually installed and verified working in the dev
+# environment (confirmed via a live end-to-end test — real login, real chat
+# message, real ChromaDB retrieval, real LLM answer) — the previous pins
+# (pydantic==1.10.13, chromadb==0.4.18, numpy==1.24.3, torch==2.1.0+cpu,
+# protobuf==3.20.3, sentence-transformers==2.2.2, setuptools==75.5.0,
+# wheel==0.44.0) did not match reality and would not reproduce this working
+# environment from a fresh install. This also resolves Rev 5 §16.1's
+# Pydantic v1-vs-v2 blocker: the codebase already runs cleanly on Pydantic
+# v2 (no v1-only syntax — no `.dict()`, `@validator`, `class Config:`, or
+# `parse_obj()` anywhere), which is what `instructor` below requires anyway.
+
+# --- Use CPU-only PyTorch (no NVIDIA/CUDA) ---
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.10.0
+
+# --- Web Scraping ---
+requests==2.32.3              # HTTP requests (fetching web pages)
+beautifulsoup4>=4.12.0        # HTML parsing
+lxml>=4.9.0                   # Fast XML/HTML parser (used by BeautifulSoup)
+crawl4ai==0.9.3                # Self-hosted JS-rendering fetch (Rev 5 §7.3) — renders
+                                # JS-heavy pages via Playwright; replaces the plain
+                                # requests+BeautifulSoup fetch for sites that need it.
+                                # Pulls in Playwright; run `playwright install chromium`
+                                # once after installing. NOT YET LIVE-TESTED on the
+                                # primary dev machine (7.9GB RAM, ~1GB free under normal
+                                # load) — confirm it runs comfortably there before
+                                # committing the Scholarships/Jobs/Events pipeline to it
+                                # (Rev 5 §16.8).
+instructor==1.16.0              # Wraps an LLM call with Pydantic-schema validation +
+                                # retry (Rev 5 §7.3) — replaces hand-written
+                                # call/parse/validate/retry glue for extraction.
+
+# --- Vector Database ---
+chromadb==1.4.1                # Vector database for semantic search
+protobuf==5.29.6               # Required by ChromaDB
+
+# --- Embeddings ---
+sentence-transformers==5.3.0   # Text-to-vector embedding models
+huggingface-hub==1.8.0         # Model downloads from HuggingFace
+
+# --- LLM (AI Model) ---
+ollama>=0.3.0                 # Local Llama 3.2 via Ollama daemon (http://localhost:11434) — used when USE_LOCAL_LLM=true
+groq>=0.11.0                  # Cloud LLM fallback — used when USE_LOCAL_LLM=false (requires GROQ_API_KEY)
+
+# --- Language Detection ---
+langdetect>=1.0.9             # Proper-script language detection; paired with a Roman-Urdu lexicon scorer
+
+# --- Speech-to-Text (local, replaces AssemblyAI) ---
+faster-whisper>=1.0.0         # CTranslate2-powered Whisper, CPU-friendly. Model is auto-downloaded on first use.
+
+# --- Web API ---
+fastapi>=0.104.0              # REST API framework
+uvicorn>=0.24.0               # ASGI server (runs FastAPI)
+pydantic>=2.10,<3.0           # Data validation (used by FastAPI) — a range, not an
+                                # exact pin, because crawl4ai==0.9.3 above requires
+                                # pydantic>=2.10 specifically (caught by a dry-run
+                                # dependency resolution during Phase 0 — the
+                                # dev environment's installed 2.9.2 does NOT satisfy
+                                # this once crawl4ai is added; a fresh install needs
+                                # >=2.10, which is still fully v2, no v1/v2 concern).
+
+# --- Utilities ---
+python-dotenv==1.0.1          # Load .env file variables
+tqdm==4.67.1                  # Progress bars
+numpy==2.3.5                  # Numerical computing
+
+# --- Admin / Vector CRUD ---
+pyjwt>=2.8.0                  # Decode Node-issued JWTs
+python-multipart>=0.0.6       # Required for FastAPI file uploads
+pypdf>=4.0.0                  # PDF text extraction
+python-docx>=1.1.0            # DOCX text extraction
+# (langchain-text-splitters removed — never installed or imported anywhere;
+# chunk_elements() in scraper.py is fully hand-rolled heading-anchored
+# packing, not a langchain splitter. Dead entry from an earlier plan.)
+
+# --- Build Tools ---
+setuptools==80.10.1
+wheel==0.46.3
