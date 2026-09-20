@@ -76,8 +76,8 @@ python/    →  FastAPI + ChromaDB + sentence-transformers — one Chroma collec
 ### Installation
 
 ```bash
-git clone https://github.com/ibrahim123-sia/UniAssist.git
-cd UniAssist
+git clone https://github.com/ibrahim123-sia/AtriumDesk.git
+cd AtriumDesk
 
 # Install dependencies
 cd client && npm install
@@ -159,7 +159,7 @@ Log in as the admin you seeded, create departments + staff from the admin panel,
 ## 📁 Project Structure
 
 ```
-UniAssist/
+AtriumDesk/
 ├── client/                       # React frontend
 │   └── src/
 │       ├── platform/             # /platform/* Super Admin pages, components, layout
