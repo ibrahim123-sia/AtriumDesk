@@ -38,6 +38,7 @@ async function getPythonBackendResponse(question, context = {}) {
         user_type: "student",
         university_name: context.branding?.universityName || undefined,
         university_short: context.branding?.universityShort || undefined,
+        rag_config: context.ragConfig || undefined,
       }),
       timeout: 30000,
     });
@@ -267,6 +268,7 @@ export const textMessageController = async (req, res) => {
         history,
         tenantSlug: req.tenant.slug,
         branding: req.tenant?.branding,
+        ragConfig: req.tenant?.ragConfig,
       }));
     } catch (error) {
       console.error("Failed to get response from Python backend:", error.message);
@@ -361,6 +363,7 @@ export const emailMessageController = async (req, res) => {
         history,
         tenantSlug: req.tenant.slug,
         branding: req.tenant?.branding,
+        ragConfig: req.tenant?.ragConfig,
       }));
     } catch (error) {
       console.error("Failed to get email response from Python backend:", error.message);
@@ -522,6 +525,7 @@ export const voiceMessageController = async (req, res) => {
         history,
         tenantSlug: req.tenant.slug,
         branding: req.tenant?.branding,
+        ragConfig: req.tenant?.ragConfig,
       }));
     } catch (error) {
       console.error("Python backend Error:", error.message);

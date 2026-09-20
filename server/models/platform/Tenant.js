@@ -62,6 +62,19 @@ const tenantSchema = new mongoose.Schema(
       primaryColor: { type: String, default: "" },
       supportEmail: { type: String, default: "" },
     },
+    // RAG retrieval tuning (python/rag.py's ask()) — every value here is
+    // optional and falls back to rag.py's own platform-default constant
+    // when null/unset, so a tenant that never touches this behaves exactly
+    // as before. Only worth adjusting once a tenant's knowledge base is
+    // noticeably larger/smaller or noisier than the platform default was
+    // tuned against.
+    ragConfig: {
+      confidenceHigh: { type: Number, default: null },
+      confidenceLow: { type: Number, default: null },
+      topK: { type: Number, default: null },
+      listingRelevance: { type: Number, default: null },
+      listingConfident: { type: Number, default: null },
+    },
     provisionedAdministrator: {
       // No cross-database `ref` — this id lives in the tenant's own database,
       // not PlatformDB, so Mongoose populate cannot resolve it here anyway.
