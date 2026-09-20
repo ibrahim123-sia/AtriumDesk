@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "../../utils/axios";
-import { setTenantBranding } from "./tenantSlice";
+import { setTenantBranding, setFeeConfig } from "./tenantSlice";
 
 // Populates tenant.branding for guests, who have no login response to get it
 // from otherwise — GuestChat.jsx previously had no branding source at all
@@ -12,6 +12,7 @@ export const fetchGuestBranding = createAsyncThunk(
       const { data } = await axios.get("/api/guest/branding");
       if (data.success) {
         dispatch(setTenantBranding(data.branding));
+        dispatch(setFeeConfig(data.feeConfig));
         return data;
       }
       return rejectWithValue(data.message);

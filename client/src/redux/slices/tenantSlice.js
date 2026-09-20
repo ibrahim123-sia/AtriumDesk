@@ -44,6 +44,7 @@ export const updateTenantSettings = createAsyncThunk(
 const initialState = {
   branding: null, // { universityName, universityShort, logoUrl, primaryColor, supportEmail }
   settings: null, // full editable record: { slug, name, branding, emailDomains, staffEmailDomainPattern }
+  feeConfig: null, // { feePerCreditHour } — semester fee calculator's admin-set rate
   loading: false,
   submitting: false,
 };
@@ -54,6 +55,9 @@ const tenantSlice = createSlice({
   reducers: {
     setTenantBranding(state, action) {
       state.branding = action.payload || null;
+    },
+    setFeeConfig(state, action) {
+      state.feeConfig = action.payload || null;
     },
     clearTenantBranding(state) {
       state.branding = null;
@@ -90,5 +94,5 @@ const tenantSlice = createSlice({
   },
 });
 
-export const { setTenantBranding, clearTenantBranding } = tenantSlice.actions;
+export const { setTenantBranding, setFeeConfig, clearTenantBranding } = tenantSlice.actions;
 export default tenantSlice.reducer;

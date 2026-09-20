@@ -62,6 +62,14 @@ const tenantSchema = new mongoose.Schema(
       primaryColor: { type: String, default: "" },
       supportEmail: { type: String, default: "" },
     },
+    // Semester fee calculator (guest-facing Scholarships tab) — a single
+    // flat per-credit-hour rate. Real fee structures can be more layered
+    // than this (flat program fees, per-program rates), but this is the
+    // one figure needed for a useful estimate; admins who need more can
+    // still point students to the office for a binding number.
+    feeConfig: {
+      feePerCreditHour: { type: Number, default: null, min: 0 },
+    },
     // RAG retrieval tuning (python/rag.py's ask()) — every value here is
     // optional and falls back to rag.py's own platform-default constant
     // when null/unset, so a tenant that never touches this behaves exactly
