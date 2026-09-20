@@ -8,6 +8,7 @@ import {
   guestSessionLimiter,
 } from "../controllers/guestChatController.js";
 import { getGuestListings } from "../controllers/guestListingController.js";
+import { listGuestActivityTabs, getGuestActivityTab } from "../controllers/guestActivityController.js";
 
 const router = express.Router();
 
@@ -20,5 +21,9 @@ router.post("/clear", guestSessionLimiter, clearGuestSession); // Clear session
 // Rev5 §19.2 — MAJU's own scholarships + upcoming campus events, for the
 // guest landing page's admissions-funnel sections below the chatbot.
 router.get("/listings", guestSessionLimiter, getGuestListings);
+
+// Admin-managed Activity tabs (Sports, Societies, etc.) — published only.
+router.get("/activity-tabs", guestSessionLimiter, listGuestActivityTabs);
+router.get("/activity-tabs/:slug", guestSessionLimiter, getGuestActivityTab);
 
 export default router;

@@ -5,8 +5,9 @@ import { v4 as uuidv4 } from "uuid";
 const ISSUE_UPLOAD_DIR = process.env.UPLOAD_DIR || "uploads/issues";
 const AVATAR_UPLOAD_DIR = "uploads/avatars";
 const TENANT_LOGO_UPLOAD_DIR = "uploads/tenant-logos";
+const ACTIVITY_IMAGE_UPLOAD_DIR = "uploads/activity-images";
 
-for (const dir of [ISSUE_UPLOAD_DIR, AVATAR_UPLOAD_DIR, TENANT_LOGO_UPLOAD_DIR]) {
+for (const dir of [ISSUE_UPLOAD_DIR, AVATAR_UPLOAD_DIR, TENANT_LOGO_UPLOAD_DIR, ACTIVITY_IMAGE_UPLOAD_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
@@ -106,6 +107,31 @@ export const tenantLogoUpload = multer({
   fileFilter: avatarFilter,
   limits: {
     fileSize: 2 * 1024 * 1024,
+    files: 1,
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Activity tab image upload (guest-facing Activity pages, admin-authored) —
+// same images-only filter as avatars/logos, one file per request (the admin
+// UI inserts each upload's returned URL into a section, so multiple images
+// on one tab are multiple separate upload calls, not a single multi-file one).
+// ---------------------------------------------------------------------------
+
+const activityImageStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, ACTIVITY_IMAGE_UPLOAD_DIR);
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${uuidv4()}${MIME_TO_EXT[file.mimetype] || ""}`);
+  },
+});
+
+export const activityImageUpload = multer({
+  storage: activityImageStorage,
+  fileFilter: avatarFilter,
+  limits: {
+    fileSize: 3 * 1024 * 1024, // 3MB cap — page images, not print-quality assets
     files: 1,
   },
 });

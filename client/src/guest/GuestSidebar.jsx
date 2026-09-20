@@ -1,13 +1,24 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useSelector } from "react-redux";
-import { MessageCircle, GraduationCap, Sun, Moon, X, Users, Trash2 } from "lucide-react";
+import { useDispatch, useSelector } from "react-redux";
+import {
+  MessageCircle, GraduationCap, Sun, Moon, X, Users, Trash2,
+  Sparkles, Trophy, Music, Palette, BookOpen, Camera, Dumbbell,
+  Globe, Heart, Mic, Code, Drama, Landmark, Rocket,
+} from "lucide-react";
+import { fetchGuestActivityTabs } from "../redux/slices/guestSlice";
+
+// Must match server/controllers/adminActivityController.js's ALLOWED_ICONS.
+const ACTIVITY_ICONS = {
+  Sparkles, Trophy, Users, Music, Palette, BookOpen, Camera,
+  Dumbbell, Globe, Heart, Mic, Code, Drama, Landmark, Rocket,
+};
 
 // Shared guest-area nav shell — extracted from GuestChat.jsx so Chat,
-// Scholarships, and any admin-defined Activity tabs all render inside the
-// same persistent sidebar/chrome instead of each page reinventing it.
-// `extraNavItems` (optional): [{ slug, label, icon }] — admin-created
-// Activity tabs get appended here once that feature exists.
+// Scholarships, and admin-defined Activity tabs all render inside the same
+// persistent sidebar/chrome instead of each page reinventing it. Fetches
+// its own Activity tab list (rather than relying on each page to) since
+// it's mounted on every guest page.
 const GuestSidebar = ({
   activeTab,
   isMenuOpen,
@@ -16,16 +27,27 @@ const GuestSidebar = ({
   toggleTheme,
   guestSessionId,
   onClearChat,
-  extraNavItems = [],
 }) => {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const tenantBranding = useSelector((s) => s.tenant.branding);
+  const activityTabs = useSelector((s) => s.guest.activityTabs);
   const universityShort = tenantBranding?.universityShort || "your university";
+
+  useEffect(() => {
+    dispatch(fetchGuestActivityTabs());
+  }, [dispatch]);
 
   const baseNavItems = [
     { slug: "chat", label: "Chat", icon: MessageCircle, onClick: () => navigate("/") },
     { slug: "scholarships", label: "Scholarships", icon: GraduationCap, onClick: () => navigate("/guest/scholarships") },
   ];
+  const extraNavItems = activityTabs.map((t) => ({
+    slug: t.slug,
+    label: t.title,
+    icon: ACTIVITY_ICONS[t.icon] || Sparkles,
+    onClick: () => navigate(`/guest/activities/${t.slug}`),
+  }));
   const navItems = [...baseNavItems, ...extraNavItems];
 
   return (

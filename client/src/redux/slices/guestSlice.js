@@ -79,6 +79,22 @@ export const fetchGuestListings = createAsyncThunk(
   }
 );
 
+// User request — admin-managed Activity tabs (Sports, Societies, etc.) for
+// the guest sidebar. Fetched by GuestSidebar.jsx itself (mounted on every
+// guest page) rather than by each page, so no page has to remember to.
+export const fetchGuestActivityTabs = createAsyncThunk(
+  "guest/fetchActivityTabs",
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await axios.get("/api/guest/activity-tabs");
+      if (data.success) return data.tabs;
+      return rejectWithValue(data.message);
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
 export const fetchGuestChatHistory = createAsyncThunk(
   "guest/fetchHistory",
   async (sessionIdArg, { getState, dispatch }) => {
@@ -132,6 +148,7 @@ const initialState = {
   followUpChips: [],
   // Rev5 §19.2 — MAJU's own scholarships + upcoming events for the funnel.
   listings: { scholarships: [], events: [] },
+  activityTabs: [],
 };
 
 const guestSlice = createSlice({
@@ -175,6 +192,9 @@ const guestSlice = createSlice({
       })
       .addCase(fetchGuestListings.fulfilled, (state, action) => {
         state.listings = action.payload;
+      })
+      .addCase(fetchGuestActivityTabs.fulfilled, (state, action) => {
+        state.activityTabs = action.payload;
       });
   },
 });

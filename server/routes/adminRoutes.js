@@ -52,8 +52,17 @@ import {
   triggerContentScrape,
   reportContentScrapeResult,
 } from "../controllers/adminContentSourceController.js";
+import {
+  listActivityTabs,
+  getActivityTab,
+  createActivityTab,
+  updateActivityTab,
+  deleteActivityTab,
+  uploadActivityImage,
+} from "../controllers/adminActivityController.js";
 import { auditAdminWrites } from "../middlewares/audit.js";
 import { requireStaffPermission } from "../middlewares/requireStaffPermission.js";
+import { activityImageUpload } from "../middlewares/upload.js";
 
 const router = express.Router();
 
@@ -92,6 +101,19 @@ router.patch("/listings/:id/approve", requireStaffPermission("content"), approve
 router.patch("/listings/:id/reject", requireStaffPermission("content"), rejectListing);
 router.post("/listings/:id/unmerge/:mergeEntryId", requireStaffPermission("content"), unmergeListingHandler);
 router.delete("/listings/:id", requireStaffPermission("content"), deleteListing);
+
+router.get("/activity-tabs", requireStaffPermission("content"), listActivityTabs);
+router.post("/activity-tabs", requireStaffPermission("content"), createActivityTab);
+router.get("/activity-tabs/:id", requireStaffPermission("content"), getActivityTab);
+router.patch("/activity-tabs/:id", requireStaffPermission("content"), updateActivityTab);
+router.delete("/activity-tabs/:id", requireStaffPermission("content"), deleteActivityTab);
+router.post(
+  "/activity-tabs/upload-image",
+  requireStaffPermission("content"),
+  activityImageUpload.single("image"),
+  handleUploadError,
+  uploadActivityImage
+);
 
 router.get("/sources", requireStaffPermission("content"), listSources);
 router.post("/sources", requireStaffPermission("content"), createSource);

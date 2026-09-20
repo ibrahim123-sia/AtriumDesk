@@ -12,6 +12,7 @@ import { sourceSchema } from "./Source.js";
 import { matchExplanationSchema } from "./MatchExplanation.js";
 import { savedListingSchema } from "./SavedListing.js";
 import { aiUsageLogSchema } from "./AiUsageLog.js";
+import { activityTabSchema } from "./ActivityTab.js";
 import { getListingModel, getScholarshipModel, getJobModel, getEventModel } from "./Listing.js";
 
 // Compiles (or reuses an already-compiled) model on a given tenant Connection.
@@ -38,6 +39,7 @@ export const getTenantModels = (connection) => {
   const MatchExplanation = getOrCreateModel(connection, "MatchExplanation", matchExplanationSchema);
   const SavedListing = getOrCreateModel(connection, "SavedListing", savedListingSchema);
   const AiUsageLog = getOrCreateModel(connection, "AiUsageLog", aiUsageLogSchema);
+  const ActivityTab = getOrCreateModel(connection, "ActivityTab", activityTabSchema);
   // Discriminator models — must attach to the SAME base Listing model
   // instance on this connection, so getListingModel/get*Model are called
   // directly rather than through getOrCreateModel (see models/Listing.js).
@@ -47,7 +49,7 @@ export const getTenantModels = (connection) => {
   const Event = getEventModel(connection);
   return {
     Department, AuditLog, LoginEvent, User, Issue, Chat, Notification,
-    DepartmentExample, FailedQuestion, Source, MatchExplanation, SavedListing, AiUsageLog, Listing, Scholarship, Job, Event,
+    DepartmentExample, FailedQuestion, Source, MatchExplanation, SavedListing, AiUsageLog, ActivityTab, Listing, Scholarship, Job, Event,
   };
 };
 

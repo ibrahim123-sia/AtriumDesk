@@ -13,6 +13,7 @@ import ProtectedRoute from "./auth/ProtectedRoute";
 import ChatPage from "./student/pages/ChatPage";
 import GuestChat from "./guest/GuestChat";
 import GuestScholarships from "./guest/GuestScholarships";
+import GuestActivityPage from "./guest/GuestActivityPage";
 import RequireStaffPermission from "./components/RequireStaffPermission";
 
 // Rev7 user request — "optimizations, industry standard practices."
@@ -59,6 +60,7 @@ const AdminHealth = lazy(() => import("./administrator/pages/Health"));
 const AdminSettings = lazy(() => import("./administrator/pages/Settings"));
 const AdminFailedQuestions = lazy(() => import("./administrator/pages/FailedQuestions"));
 const AdminContent = lazy(() => import("./administrator/pages/Content"));
+const AdminActivities = lazy(() => import("./administrator/pages/Activities"));
 
 const RouteFallback = () => (
   <div className="h-screen flex items-center justify-center">
@@ -167,6 +169,7 @@ const App = () => {
         {/* Public routes */}
         <Route path="/" element={<GuestChat />} />
         <Route path="/guest/scholarships" element={<GuestScholarships />} />
+        <Route path="/guest/activities/:slug" element={<GuestActivityPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/unsubscribe" element={<Unsubscribe />} />
@@ -268,6 +271,7 @@ const App = () => {
               server's requireStaffPermission middleware. */}
           <Route path="data" element={<RequireStaffPermission permission="data"><AdminData /></RequireStaffPermission>} />
           <Route path="content" element={<RequireStaffPermission permission="content"><AdminContent /></RequireStaffPermission>} />
+          <Route path="activities" element={<RequireStaffPermission permission="content"><AdminActivities /></RequireStaffPermission>} />
           <Route path="query" element={<RequireStaffPermission permission="query"><AdminQuery /></RequireStaffPermission>} />
           <Route path="query/:id" element={<RequireStaffPermission permission="query"><AdminQuery /></RequireStaffPermission>} />
           <Route path="failed-questions" element={<RequireStaffPermission permission="failedQuestions"><AdminFailedQuestions /></RequireStaffPermission>} />
@@ -290,6 +294,7 @@ const App = () => {
           <Route path="data" element={<AdminData />} />
           <Route path="failed-questions" element={<AdminFailedQuestions />} />
           <Route path="content" element={<AdminContent />} />
+          <Route path="activities" element={<AdminActivities />} />
           <Route path="logs" element={<AdminLogs />} />
           <Route path="health" element={<AdminHealth />} />
           <Route path="settings" element={<AdminSettings />} />
