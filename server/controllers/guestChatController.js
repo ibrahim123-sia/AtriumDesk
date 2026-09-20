@@ -145,6 +145,7 @@ async function getPythonBackendResponse(question, context = {}) {
         // collection, which reads as the bot confusing itself.
         university_name: context.branding?.universityName || undefined,
         university_short: context.branding?.universityShort || undefined,
+        rag_config: context.ragConfig || undefined,
       }),
       timeout: 30000, // 30 second timeout
     });
@@ -354,7 +355,7 @@ export const guestTextChatController = async (req, res) => {
       confidenceTier = cached.confidenceTier;
     } else {
       try {
-        const result = await getPythonBackendResponse(message, { sessionId, history, tenantSlug: tenant, branding: guestTenant.branding });
+        const result = await getPythonBackendResponse(message, { sessionId, history, tenantSlug: tenant, branding: guestTenant.branding, ragConfig: guestTenant.ragConfig });
         botReply = result.answer;
         confidenceTier = result.confidenceTier;
         logAiUsage(tenant, result.usage, "guest_chat");

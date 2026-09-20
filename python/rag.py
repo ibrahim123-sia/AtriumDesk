@@ -60,22 +60,23 @@ DEFAULT_UNIVERSITY_SHORT = "the university"
 
 # Rev 5 §8's three-tier retrieval confidence, computed in `ask()` from the
 # top merged-search score (semantic + keyword) and surfaced through
-# AnswerResponse for §4.2's chatbot-handoff tiering. Thresholds are a
-# starting point, not tuned from first principles — §13.2 explicitly calls
-# for tuning against the golden set rather than intuition; adjust these two
-# constants if a golden-set run shows misclassification.
+# AnswerResponse for §4.2's chatbot-handoff tiering. These are the platform
+# defaults — every tenant starts here, but a tenant with an unusually large
+# or noisy knowledge base may need different tuning to hit the same answer
+# quality, so `ask()` accepts a `rag_config` override (Tenant.ragConfig,
+# admin-settable) that falls back to these constants when absent.
 CONFIDENCE_HIGH_THRESHOLD = 0.55
 CONFIDENCE_LOW_THRESHOLD = 0.35
 
 
-def compute_confidence_tier(top_score):
+def compute_confidence_tier(top_score, high_threshold=CONFIDENCE_HIGH_THRESHOLD, low_threshold=CONFIDENCE_LOW_THRESHOLD):
     """Maps a merged search score to high/medium/low. `top_score` is None or
     0 when no chunks were retrieved at all, which is always low."""
     if not top_score:
         return "low"
-    if top_score >= CONFIDENCE_HIGH_THRESHOLD:
+    if top_score >= high_threshold:
         return "high"
-    if top_score >= CONFIDENCE_LOW_THRESHOLD:
+    if top_score >= low_threshold:
         return "medium"
     return "low"
 
@@ -731,13 +732,14 @@ def _format_listing_block(listing):
     return "\n".join(lines)
 
 
-def _retrieve_listing_context(tenant_slug, retrieval_query, user_type):
+def _retrieve_listing_context(tenant_slug, retrieval_query, user_type, relevance_threshold=LISTING_RELEVANCE_THRESHOLD):
     """Returns (chunks, sources, top_similarity) for listings above the
     relevance threshold, ready to append to the FAQ chunks/sources already
     built in `ask()`. `top_similarity` is the highest similarity among the
     included hits (0.0 if none) — the caller uses it against
-    LISTING_CONFIDENT_THRESHOLD to decide whether to upgrade confidence_tier,
-    which is a stricter bar than the inclusion threshold applied below.
+    LISTING_CONFIDENT_THRESHOLD (or a tenant's own override) to decide
+    whether to upgrade confidence_tier, which is a stricter bar than the
+    inclusion threshold applied below.
 
     §8.7.6 Branch D: guests get a narrower scope — external scholarships
     and jobs are out of it, only campus events are in scope for them.
@@ -754,7 +756,7 @@ def _retrieve_listing_context(tenant_slug, retrieval_query, user_type):
     chunks, sources, top_similarity = [], [], 0.0
     for hit in hits:
         similarity = hit.get("similarity", 0)
-        if similarity < LISTING_RELEVANCE_THRESHOLD:
+        if similarity < relevance_threshold:
             continue
         chunks.append(_format_listing_block(hit))
         sources.append({"source": f"{_LISTING_TYPE_LABEL.get(hit.get('listingType'), 'Listing')} database"})
@@ -769,6 +771,7 @@ def ask(
     user_type="guest",
     university_name=None,
     university_short=None,
+    rag_config=None,
 ):
     """Run the full RAG pipeline for a student question.
 
@@ -786,10 +789,23 @@ def ask(
     (tenant branding, falls back to the generic defaults if not supplied) feed
     the Rev 5 §8.7.6 prompt template.
 
+    `rag_config` (optional dict): a tenant's own retrieval-tuning overrides
+    (Tenant.ragConfig, admin-settable) — any of confidenceHigh, confidenceLow,
+    topK, listingRelevance, listingConfident. Missing/absent keys fall back
+    to this module's platform-default constants, so callers that don't pass
+    it (or a tenant that hasn't set overrides) behave exactly as before.
+
     Returns a dict: {"answer": str, "confidence_tier": "high"|"medium"|"low"}.
     §4.2's chatbot-handoff tiering reads `confidence_tier`; the score it's
     computed from was previously thrown away (see `compute_confidence_tier`).
     """
+    rag_config = rag_config or {}
+    top_k = rag_config.get("topK") or config.TOP_K_RESULTS
+    confidence_high = rag_config.get("confidenceHigh") or CONFIDENCE_HIGH_THRESHOLD
+    confidence_low = rag_config.get("confidenceLow") or CONFIDENCE_LOW_THRESHOLD
+    listing_relevance = rag_config.get("listingRelevance") or LISTING_RELEVANCE_THRESHOLD
+    listing_confident = rag_config.get("listingConfident") or LISTING_CONFIDENT_THRESHOLD
+
     # Reset up front, not just inside _llm_chat — the `if not chunks` branch
     # below returns a canned answer without ever calling _llm_chat, and this
     # thread may have leftover usage from an earlier, unrelated request
@@ -810,7 +826,7 @@ def ask(
             question=question,
             collection=collection,
             model=_model,
-            top_k=config.TOP_K_RESULTS,
+            top_k=top_k,
         )
     ]
     retrieval_query = _build_retrieval_query(question, history)
@@ -820,16 +836,18 @@ def ask(
                 question=retrieval_query,
                 collection=collection,
                 model=_model,
-                top_k=config.TOP_K_RESULTS,
+                top_k=top_k,
             )
         )
-    chunks, sources, scores = _merge_search_results(result_sets, config.TOP_K_RESULTS)
-    confidence_tier = compute_confidence_tier(scores[0] if scores else None)
+    chunks, sources, scores = _merge_search_results(result_sets, top_k)
+    confidence_tier = compute_confidence_tier(scores[0] if scores else None, confidence_high, confidence_low)
 
     # §8 Layer 4 — a separate, independently-thresholded context section
     # (see _retrieve_listing_context's own docstring for why this isn't
     # merged into the ranked FAQ list above).
-    listing_chunks, listing_sources, listing_top_similarity = _retrieve_listing_context(tenant_slug, retrieval_query, user_type)
+    listing_chunks, listing_sources, listing_top_similarity = _retrieve_listing_context(
+        tenant_slug, retrieval_query, user_type, listing_relevance
+    )
     if listing_chunks:
         chunks = chunks + listing_chunks
         sources = sources + listing_sources
@@ -837,9 +855,9 @@ def ask(
         # unrelated FAQ collection came back weak — don't let FAQ's score
         # alone suppress the medium-tier clarifying-question behavior for a
         # question that's actually well-answered by the listings context.
-        # Gated on LISTING_CONFIDENT_THRESHOLD (stricter than the inclusion
+        # Gated on listing_confident (stricter than the inclusion
         # threshold) so a merely-included-but-weak hit doesn't upgrade it.
-        if confidence_tier == "low" and listing_top_similarity >= LISTING_CONFIDENT_THRESHOLD:
+        if confidence_tier == "low" and listing_top_similarity >= listing_confident:
             confidence_tier = "medium"
 
     if not chunks:

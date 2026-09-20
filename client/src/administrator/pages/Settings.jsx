@@ -38,6 +38,11 @@ const emptyForm = {
   smtpFromEmail: "",
   smtpFromName: "",
   smtpAppPassword: "",
+  ragConfidenceHigh: "",
+  ragConfidenceLow: "",
+  ragTopK: "",
+  ragListingRelevance: "",
+  ragListingConfident: "",
 };
 
 const Settings = () => {
@@ -68,6 +73,11 @@ const Settings = () => {
       smtpFromEmail: settings.smtp?.fromEmail || "",
       smtpFromName: settings.smtp?.fromName || "",
       smtpAppPassword: "",
+      ragConfidenceHigh: settings.ragConfig?.confidenceHigh ?? "",
+      ragConfidenceLow: settings.ragConfig?.confidenceLow ?? "",
+      ragTopK: settings.ragConfig?.topK ?? "",
+      ragListingRelevance: settings.ragConfig?.listingRelevance ?? "",
+      ragListingConfident: settings.ragConfig?.listingConfident ?? "",
     });
   }, [settings]);
 
@@ -99,6 +109,13 @@ const Settings = () => {
         // round-tripped to the client, so an empty field here never means
         // "clear it").
         ...(form.smtpAppPassword ? { appPassword: form.smtpAppPassword } : {}),
+      },
+      ragConfig: {
+        confidenceHigh: form.ragConfidenceHigh === "" ? null : form.ragConfidenceHigh,
+        confidenceLow: form.ragConfidenceLow === "" ? null : form.ragConfidenceLow,
+        topK: form.ragTopK === "" ? null : form.ragTopK,
+        listingRelevance: form.ragListingRelevance === "" ? null : form.ragListingRelevance,
+        listingConfident: form.ragListingConfident === "" ? null : form.ragListingConfident,
       },
     };
     const result = await dispatch(updateTenantSettings(body)).unwrap();
@@ -283,6 +300,39 @@ const Settings = () => {
               autoComplete="new-password"
             />
           </Field>
+        </div>
+
+        <div className="pt-4 border-t space-y-4" style={{ borderColor: C.border }}>
+          <p className="text-sm font-medium" style={{ color: C.text }}>
+            Chatbot answer tuning (advanced)
+          </p>
+          <p className="text-xs" style={{ color: C.muted }}>
+            Leave blank to use the platform default. Only worth changing if your knowledge base is
+            noticeably larger/smaller than typical and answers feel over- or under-confident.
+          </p>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field C={C} label="Confidence: high threshold" hint="0–1, default 0.55">
+              <input type="number" step="0.01" min="0" max="1" value={form.ragConfidenceHigh}
+                onChange={handleChange("ragConfidenceHigh")} placeholder="0.55" className={inputClass} style={inputStyle} />
+            </Field>
+            <Field C={C} label="Confidence: low threshold" hint="0–1, default 0.35">
+              <input type="number" step="0.01" min="0" max="1" value={form.ragConfidenceLow}
+                onChange={handleChange("ragConfidenceLow")} placeholder="0.35" className={inputClass} style={inputStyle} />
+            </Field>
+            <Field C={C} label="Chunks retrieved per question" hint="1–50, default 8">
+              <input type="number" step="1" min="1" max="50" value={form.ragTopK}
+                onChange={handleChange("ragTopK")} placeholder="8" className={inputClass} style={inputStyle} />
+            </Field>
+            <Field C={C} label="Listing relevance threshold" hint="0–1, default 0.30">
+              <input type="number" step="0.01" min="0" max="1" value={form.ragListingRelevance}
+                onChange={handleChange("ragListingRelevance")} placeholder="0.30" className={inputClass} style={inputStyle} />
+            </Field>
+            <Field C={C} label="Listing confident threshold" hint="0–1, default 0.55">
+              <input type="number" step="0.01" min="0" max="1" value={form.ragListingConfident}
+                onChange={handleChange("ragListingConfident")} placeholder="0.55" className={inputClass} style={inputStyle} />
+            </Field>
+          </div>
         </div>
 
         <div className="pt-2">

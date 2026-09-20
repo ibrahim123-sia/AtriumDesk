@@ -11,6 +11,12 @@ import { findRedosRisk } from "../services/regexSafety.js";
 // Super Admin / provisioning concerns, not branding.
 const EDITABLE_BRANDING_FIELDS = ["universityName", "universityShort", "logoUrl", "primaryColor", "supportEmail"];
 
+// Similarity-score thresholds live on 0-1; topK is a positive chunk count.
+// Same admin-self-service tier as branding — not a Super Admin concern —
+// since it only affects this tenant's own chatbot answer quality, never
+// another tenant's.
+const RAG_SCORE_FIELDS = ["confidenceHigh", "confidenceLow", "listingRelevance", "listingConfident"];
+
 const serializeTenant = (tenant) => ({
   slug: tenant.slug,
   name: tenant.name,
@@ -18,6 +24,7 @@ const serializeTenant = (tenant) => ({
   emailDomains: tenant.emailDomains,
   staffEmailDomainPattern: tenant.staffEmailDomainPattern,
   studentEmailPattern: tenant.studentEmailPattern,
+  ragConfig: tenant.ragConfig,
   // Never serialize the encrypted app password itself — only whether one
   // is configured, so the client can show "configured" vs. an empty field
   // without ever round-tripping the secret.
@@ -41,7 +48,7 @@ export const getTenantSettings = async (req, res) => {
 };
 
 export const updateTenantSettings = async (req, res) => {
-  const { name, branding, emailDomains, staffEmailDomainPattern, studentEmailPattern, smtp } = req.body || {};
+  const { name, branding, emailDomains, staffEmailDomainPattern, studentEmailPattern, smtp, ragConfig } = req.body || {};
   try {
     const Tenant = getTenantModel();
     const tenant = await Tenant.findById(req.tenant._id).select("+smtp.appPasswordEncrypted");
@@ -101,6 +108,32 @@ export const updateTenantSettings = async (req, res) => {
         }
       }
       tenant.studentEmailPattern = trimmed;
+    }
+
+    if (ragConfig && typeof ragConfig === "object") {
+      for (const key of RAG_SCORE_FIELDS) {
+        if (ragConfig[key] === undefined) continue;
+        if (ragConfig[key] === null || ragConfig[key] === "") {
+          tenant.ragConfig[key] = null; // explicit reset to the platform default
+          continue;
+        }
+        const num = Number(ragConfig[key]);
+        if (!Number.isFinite(num) || num < 0 || num > 1) {
+          return res.status(400).json({ success: false, message: `${key} must be a number between 0 and 1` });
+        }
+        tenant.ragConfig[key] = num;
+      }
+      if (ragConfig.topK !== undefined) {
+        if (ragConfig.topK === null || ragConfig.topK === "") {
+          tenant.ragConfig.topK = null;
+        } else {
+          const topK = Number(ragConfig.topK);
+          if (!Number.isInteger(topK) || topK < 1 || topK > 50) {
+            return res.status(400).json({ success: false, message: "topK must be a whole number between 1 and 50" });
+          }
+          tenant.ragConfig.topK = topK;
+        }
+      }
     }
 
     if (smtp && typeof smtp === "object") {

@@ -193,6 +193,11 @@ class QuestionRequest(BaseModel):
     # if not supplied, so single-tenant callers need no changes.
     university_name: Optional[str] = None
     university_short: Optional[str] = None
+    # A tenant's own retrieval-tuning overrides (Tenant.ragConfig,
+    # admin-settable) — confidenceHigh/confidenceLow/topK/listingRelevance/
+    # listingConfident, any subset. Falls back to rag.py's platform-default
+    # constants for any key not supplied.
+    rag_config: Optional[dict] = None
 
 
 class AnswerResponse(BaseModel):
@@ -283,6 +288,7 @@ def ask_question(request: QuestionRequest):
         user_type=request.user_type,
         university_name=request.university_name,
         university_short=request.university_short,
+        rag_config=request.rag_config,
     )
     return AnswerResponse(
         answer=result["answer"],
