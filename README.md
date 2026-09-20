@@ -1,11 +1,11 @@
-# UniAssist 🎓
+# AtriumDesk 🎓
 ### Multi-tenant AI Student Portal SaaS — launched for Muhammad Ali Jinnah University (MAJU)
 
 ![React](https://img.shields.io/badge/Frontend-React-61DAFB?style=flat&logo=react)
 ![Node.js](https://img.shields.io/badge/Backend-Node.js-339933?style=flat&logo=nodedotjs)
 ![Python](https://img.shields.io/badge/AI-Python-3776AB?style=flat&logo=python)
 
-UniAssist is a full-stack AI-powered platform that consolidates university student services into one intelligent system, built database-per-tenant so any university can be onboarded — not just MAJU. At its core is a smart chatbot (RAG over each tenant's own scraped website content) that supports voice input and Roman Urdu — making university help accessible to every student. There is no mobile app; the client is a responsive web app with an offline-capable PWA shell.
+AtriumDesk is a full-stack AI-powered platform that consolidates university student services into one intelligent system, built database-per-tenant so any university can be onboarded — not just MAJU. At its core is a smart chatbot (RAG over each tenant's own scraped website content) that supports voice input and Roman Urdu — making university help accessible to every student. There is no mobile app; the client is a responsive web app with an offline-capable PWA shell.
 
 ---
 
@@ -43,6 +43,7 @@ UniAssist is a full-stack AI-powered platform that consolidates university stude
 | **Data (Vector DB)** | ✅ | Direct-to-Python CRUD on the chatbot knowledge base; edit/add chunks; upload PDF / DOCX / TXT with auto chunking + embedding |
 | **Logs & Activity** | ✅ | Three tabs: admin action audit (with redacted payload), login events (success + failures), chat browser with flagged-student filter |
 | **Content Management** | ✅ | Manage scholarship/job/event sources, review scraped listings, self-service chatbot knowledge-base website scraping |
+| **System Health** | ✅ | One-screen manual health check pinging MongoDB, ChromaDB, and the active LLM provider — meant to be run right before a demo/exam |
 
 ### 🧑‍✈️ Super Admin (Platform)
 | Module | Status | Description |
@@ -61,7 +62,7 @@ server/    →  Node.js / Express + MongoDB / Mongoose — one PlatformDB (tenan
 python/    →  FastAPI + ChromaDB + sentence-transformers — one Chroma collection per tenant
 ```
 
-**Key libraries:** `recharts` (admin/staff dashboards), `react-hot-toast`, `lucide-react`, `multer`, `nodemailer` (Gmail SMTP), `pyjwt`, `pypdf`, `python-docx`, `langchain-text-splitters`.
+**Key libraries:** `recharts` (admin/staff dashboards), `react-hot-toast`, `lucide-react`, `multer`, `nodemailer` (Gmail SMTP), `pyjwt`, `pypdf`, `python-docx` (chunking is a hand-rolled heading-anchored packer in `scraper.py`, not a third-party splitter).
 
 ---
 
@@ -94,7 +95,7 @@ those files are the source of truth; the summary below is a quick-glance overvie
 `server/.env` (highlights)
 ```
 MONGODB_URI=...                          # one shared cluster; each tenant gets its own database on it
-PLATFORM_DB_NAME=UniAssistPlatform       # tenant registry + Super Admin users
+PLATFORM_DB_NAME=AtriumDeskPlatform      # tenant registry + Super Admin users
 JWT_SECRET=<long-random-string>          # tenant-user JWTs
 PLATFORM_JWT_SECRET=<long-random-string> # Super Admin JWTs — must differ from JWT_SECRET
 INTERNAL_SECRET=<long-random-string, must match python/.env>
@@ -194,6 +195,13 @@ AtriumDesk/
 │   ├── scraper.py                # self-service per-tenant website scraper
 │   └── chroma_db/                # persistent vector store (gitignored)
 ```
+
+---
+
+## 📚 Documentation
+
+- **`AGENTS.md`** — the complete, unabridged spec (all planning revisions, current governing answers per decision area). This is the source of truth for AI coding agents and for resolving any ambiguity in this README.
+- **`doc/Guide.pdf`** — the same content as `AGENTS.md`, regenerated as a human-readable PDF. `doc/` holds internal/academic working files and isn't tracked in git (see `.gitignore`), so this PDF lives locally only, not on GitHub.
 
 ---
 
