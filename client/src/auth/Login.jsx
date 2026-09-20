@@ -517,6 +517,12 @@ const Login = () => {
               </div>
             </div>
           </div>
+
+          <div className="mt-4 text-center text-xs text-[#53716C] dark:text-[#8FB0AA]">
+            <Link to="/privacy" className="hover:underline">Privacy Policy</Link>
+            <span className="mx-2">·</span>
+            <Link to="/terms" className="hover:underline">Terms of Service</Link>
+          </div>
         </div>
       </div>
     </div>
