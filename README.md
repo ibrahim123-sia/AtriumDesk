@@ -7,6 +7,10 @@
 
 AtriumDesk is a full-stack AI-powered platform that consolidates university student services into one intelligent system, built database-per-tenant so any university can be onboarded — not just MAJU. At its core is a smart chatbot (RAG over each tenant's own scraped website content) with voice input support — making university help accessible to every student. There is no mobile app; the client is a responsive web app with an offline-capable PWA shell.
 
+<p align="center">
+  <img src="preview.png" alt="AtriumDesk preview" width="100%"/>
+</p>
+
 ---
 
 ## ✨ Features
@@ -214,3 +218,7 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 ## 📄 License
 
 No license file is currently included in this repository — all rights reserved by default until one is added.
+
+---
+
+<p align="center">Built by <b>Syed Ibrahim Ali</b> — Full-Stack &amp; AI Engineer</p>
