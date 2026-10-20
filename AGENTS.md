@@ -4,7 +4,7 @@ Single file containing the full, unabridged text of every planning document prod
 
 ## How to read this file — precedence when parts disagree
 
-The four parts below were written in this order: **Part A (Rev 5) → Part B (Rev 6) → Part C (SaaS Plan) → Part D (Rev 7)**. Each part is preserved in full and unedited from its source document — nothing is trimmed. Where a later part changes an earlier decision, the later part wins. The cross-reference table below is the fast way to find the current, governing answer without reading all four parts in full.
+The five parts below were written in this order: **Part A (Rev 5) → Part B (Rev 6) → Part C (SaaS Plan) → Part D (Rev 7) → Part E (Rev 8 — review of the built system, October 2026)**. Parts A–D are preserved in full and unedited from their source documents — nothing is trimmed. Part E records what the October 2026 end-to-end review changed in the built system. Where a later part changes an earlier decision, the later part wins. The cross-reference table below is the fast way to find the current, governing answer without reading every part in full.
 
 | Decision area | Governed by | Current answer (one line) |
 |---|---|---|
@@ -14,10 +14,16 @@ The four parts below were written in this order: **Part A (Rev 5) → Part B (Re
 | Tenant request routing | Part D §5.5 (supersedes Part C §6's subdomain default) | JWT-embedded tenant claim, not subdomains. |
 | ChromaDB tenancy mechanism | Part D §5.4 (corrects Part C §6) | One `PersistentClient`, one path, one collection per tenant. |
 | CORS fix | Part B Finding 3, reaffirmed by Part D §5.6 | Single `CLIENT_URL` allow-list — unchanged, because JWT-claim routing means one frontend origin. |
-| Login lockout / OTP limiter / stray ChromaDB | Part B Findings 1, 2, 4 | Still open — dead fields, unwired middleware, untracked stray store; fixes described in Part B. |
+| Login lockout / OTP limiter / stray ChromaDB | Part B Findings 1, 2, 4; Part E §E.2 | Fixed — lockout counts recent failures in `LoginEvent`; OTP limiters wired, plus per-address and code-check limiters (Part E); stray root store removed from git. |
+| Guest university selection | Part E §E.3 (extends Part D §5.5, which covers signed-in users only) | Guests have no JWT: a university's link `/?u=<slug>` or website widget picks it, every guest request carries `tenant`; otherwise the default tenant. |
+| Guest sessions | Part E §E.3 | Server-issued ids only (`guest_<32 hex>`), bound to one university; anything else gets a fresh session. |
+| Framing / embedding | Part E §E.3 | App sends `frame-ancestors 'self'`; only `/embed` (the widget's guest chat) may be framed by other sites. |
+| Matching output states | Part E §E.2 (supersedes Part A §8 Layer 1's three states) | Four: excluded / eligible / near miss / **unverified** (a requirement the profile doesn't answer is never treated as met). |
+| Issue lifecycle | Part E §E.4 (extends Part A §4.1, §4.4) | Student reply on Resolved reopens to In Progress; Resolved untouched 7 days auto-closes; staff-only internal notes; department transfer. |
+| Answer feedback | Part E §E.4 (extends Part A §4.3) | 👍/👎 on every answer; 👎 adds the question to the failed-question log with `reason: "unhelpful"` and the answer given. |
 | Feature set (Scholarships/Jobs/Events/matching/etc.) | Part A, in full | Unchanged by the SaaS pivot — every module in Part A still applies, now running inside one tenant's database. |
 | Build order | Part D §9 (supersedes Part A §12 and Part C §7 individually) | T0/T1 precede Part A's Phase 0; Part A's phases then proceed unchanged; T2/T3 run later. |
-| Open items requiring verification | Part D §10 (merges Part A §16 with new items) | Single consolidated list — see Part D §10. |
+| Open items requiring verification | Part D §10 (merges Part A §16 with new items); Part E §E.6 | Part D §10 for planning items; Part E §E.6 for what the October 2026 review left open. |
 | Scope cut for the SaaS layer | Part D §6 | Must/Nice/Defer — see table there before adding SaaS-layer work. |
 
 ---
@@ -2218,3 +2224,77 @@ Merges Rev 5 §16's original list with this document's new items. Nothing here i
 | Build order | T0 and T1 precede Rev 5's Phase 0; Rev 5's phases then proceed unchanged; T2/T3 run in parallel or later. |
 | Testing | One mandatory tenant-isolation test ships with Phase T0 itself, not deferred (§5.2). |
 | Scope cut | Must/Nice/Defer applied to the SaaS layer specifically (§6) — billing, self-serve signup and impersonation deferred past FYP-2. |
+
+---
+
+# PART E — Rev 8: Review of the built system (October 2026)
+
+*Written after an end-to-end review of the running code on 2026-10-20 (branch `improve/review-2026-10`, six commits). Unlike Parts A–D this part describes decisions already implemented. The long-form write-up, with research, verification and a feature guide, is `doc/AtriumDesk_Review_2026-10.pdf` (local, like `doc/Guide.pdf`).*
+
+## Rev8 §E.1 Scope
+
+The review stayed inside AtriumDesk's own domain — the AI student assistant, the department help desk, scholarships/jobs/events, the guest admissions funnel and the SaaS layer. LMS features (courses, attendance, grading, exams, fees, timetables) were deliberately not added: they belong to Acadex.
+
+## Rev8 §E.2 Accounts and matching
+
+| Area | Decision (implemented) | Where |
+|---|---|---|
+| OTP codes | `crypto.randomInt`, 5-minute life, 60-second resend cooldown, constant-time compare, attempt cap checked before comparing, exhausted code cleared | `server/controllers/userController.js` |
+| Throttles | Sending endpoints limited per IP+address and overall; verify/reset limited separately (`codeCheckLimiter`) | `server/routes/userRoutes.js` |
+| Sign-up | Registering returns a verification ticket bound to the account's password hash; verifying needs it | `userController.js` |
+| Sessions | `User.passwordChangedAt` invalidates older JWTs; tokens carrying a `purpose` are never sessions | `server/middlewares/auth.js` |
+| Emails | Every interpolated value escaped via the `safeHtml` tagged template | `server/services/notify.js` |
+| Email transport | Any SMTP relay via `SMTP_HOST/PORT/SECURE/USER/PASS`, `EMAIL_FROM`; per-tenant SMTP still overrides | `server/services/mailer.js` |
+| Matching | States excluded / eligible / near_miss / unverified; degree progression (bachelor's may apply for master's); any accepted English test; city containment; deadlines compared to the start of today | `server/services/matching.js` |
+| Explanations | The model receives only listing facts, profile facts and skill gaps; truncated output is never cached | `python/listing_explain.py`, `server/services/matchExplanations.js` |
+| Re-scrapes | A changed live listing becomes a pending *revision* (`Listing.revisionOf`) reviewed with a diff; only approved listings are embedded | `server/controllers/adminSourceController.js` |
+| Application tracker | `SavedListing.status` saved → preparing → applied → interviewing → offer / rejected / withdrawn, plus notes and documents checklist | `server/models/SavedListing.js` |
+
+## Rev8 §E.3 Assistant and guests
+
+| Area | Decision (implemented) | Where |
+|---|---|---|
+| Sources | `/ask` returns up to three website URLs, only for a high-confidence answer; shown under the answer, never cited in it | `python/rag.py` (`_source_links`) |
+| Answer feedback | `AnswerFeedback` per answer (`context: chat / issue_form`); a 👎 creates a `FailedQuestion` with `reason: "unhelpful"` and the answer | `server/controllers/chatController.js`, `guestChatController.js` |
+| Insights | `GET /api/admin/stats/assistant` — answers by tier, guest answers, helpful rate (chat only), handoffs, answers accepted on the issue form, top gaps | `server/controllers/adminStatsController.js` |
+| Guest sessions | Only server-issued ids are accepted; a session belongs to one university; the move into a new account at sign-up checks the university | `guestChatController.js`, `userController.js` |
+| Guest university | `/?u=<slug>` (remembered in `localStorage.guestTenant`) or the widget's `/embed?u=<slug>`; all guest calls send `tenant` | `client/src/utils/guestTenant.js` |
+| Website widget | `client/public/widget.js` adds a button that opens `/embed` in an iframe; Admin → Settings shows the link and snippet | `client/src/administrator/components/ShareAssistant.jsx` |
+| Framing | `frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN` for the app, removed for `/embed` | `client/public/_headers` |
+| Knowledge base rebuild | Chunks not created by the website scrape (ids not starting `chunk_`) are kept across a rebuild | `python/database.py` |
+| AI-service calls | node-fetch v3 ignores `timeout`; every call uses `AbortSignal.timeout(...)` (chat 60 s, issue suggestion 25 s, scrape 90 s) | server controllers/services |
+
+## Rev8 §E.4 Help desk
+
+| Area | Decision (implemented) | Where |
+|---|---|---|
+| Internal notes | `Issue.internalNotes` is `select:false`; only staff views add `+internalNotes`; never in student responses or the data export | `server/models/Issue.js`, `issueController.js` |
+| Transfer | Staff move an open issue to another active department: unassigned, escalation reset, staff-only note, both sides notified, a `DepartmentExample` recorded | `issueController.js` (`transferIssue`) |
+| Saved replies | `CannedResponse` per department; `{student}` placeholder | `server/models/CannedResponse.js` |
+| Reopen | A student reply on Resolved moves the issue to In Progress (`lastEvent.type = "reopen"`) and notifies the assignee, or the department if unassigned; replies on Closed are refused | `issueController.js` |
+| Auto-close | Daily job `autoCloseIssues` (04:00) closes issues Resolved and untouched for 7 days; the student is told and can still rate | `server/services/scheduler.js` |
+| Deflection | `GET /api/issue/answer-suggestion` asks the assistant before filing; only a high-confidence answer is shown | `issueController.js`, `client/src/student/pages/CreateIssue.jsx` |
+| Escalation recipients | Department head only while an active staff member of that department; otherwise all active department staff (administrators always) | `scheduler.js` |
+| Department settings | Admin edits the first-reply target (1–720 h, empty = 48 h default) and the escalation head | `departmentController.js`, `Departments.jsx` |
+| Inbox | Response includes per-status `counts`; `mine=true` filter | `issueController.js` (`getDeptIssues`) |
+
+## Rev8 §E.5 Privacy and UX
+
+- `GET /api/user/me/export` returns everything held about the signed-in user (no password hash, codes or staff notes). `POST /api/user/me/delete` (students only, password required, not during support access) deletes the account, chats, saved items, notifications and ratings; issues are kept for the departments with the name and email replaced. This completes Part A §13.3's "data export / delete".
+- Signed-in users opening `/` go to their role's home; `/login` redirects signed-in users.
+- The tenant logo (or initials) replaces the hardcoded "UA"/"AD" marks; staff and admin navbars carry the notification bell.
+
+## Rev8 §E.6 Open after the review
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Guests asking "What scholarships does the university offer and how much do they cover?" get the no-information reply (students get the answer) | Open — a prompt clarification of the guest scope (the university's own scholarships, fee waivers and financial aid; "the university" = this tenant) is ready but unmeasured; golden case `guest-scholarships-coverage` fails until fixed |
+| 2 | LLM failover: Groq key #2 and Gemini key invalid; Groq key #1 hits 200k tokens/day | Open — needs working keys or a paid tier (relates to Part D §10 item 3 and 8) |
+| 3 | Tenant SMTP credentials rejected (535) | Open — configure a working account or `SMTP_*` relay |
+| 4 | Students can't choose a department in the profile | Open (code) |
+| 5 | Chat rename / clear have server routes but no UI; chat delete icon is hover-only | Open (code) |
+| 6 | Admin issue view doesn't show internal notes | Open (code) |
+| 7 | New features verified by review scripts, not by tests in the repository | Open (code) |
+| 8 | Guest answers served from the cache aren't counted on the assistant card | Open (minor) |
+| 9 | Next candidates: AI-drafted staff replies, business-hours SLA, office hours / walk-in queue, event RSVP + QR check-in, web push, saved searches, scheduled knowledge-base refresh, configurable starter questions, crisis escalation with per-tenant helplines | Not started |
+

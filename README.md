@@ -71,7 +71,7 @@ server/    →  Node.js / Express + MongoDB / Mongoose — one PlatformDB (tenan
 python/    →  FastAPI + ChromaDB + sentence-transformers — one Chroma collection per tenant
 ```
 
-**Key libraries:** `recharts` (admin/staff dashboards), `react-hot-toast`, `lucide-react`, `multer`, `nodemailer` (Gmail SMTP), `pyjwt`, `pypdf`, `python-docx` (chunking is a hand-rolled heading-anchored packer in `scraper.py`, not a third-party splitter).
+**Key libraries:** `recharts` (admin/staff dashboards), `react-markdown`, `react-hot-toast`, `lucide-react`, `multer`, `nodemailer` (any SMTP relay — Gmail, Brevo, Resend…), `express-rate-limit`, `pyjwt`, `pypdf`, `python-docx` (chunking is a hand-rolled heading-anchored packer in `scraper.py`, not a third-party splitter).
 
 ---
 
@@ -112,6 +112,8 @@ FIELD_ENCRYPTION_KEY=<32-byte-hex>       # encrypts a tenant's own SMTP app pass
 SUPERADMIN_EMAIL / SUPERADMIN_NAME / SUPERADMIN_PASSWORD   # seeded on first run
 DEFAULT_TENANT_SLUG=maju                 # which tenant guest/legacy traffic resolves to
 EMAIL_USER / EMAIL_PASS                  # platform-default Gmail SMTP fallback
+SMTP_HOST / SMTP_PORT / SMTP_SECURE      # …or any other SMTP relay (e.g. smtp-relay.brevo.com:587)
+SMTP_USER / SMTP_PASS / EMAIL_FROM       # relay login + sender address (a tenant's own SMTP in Settings wins)
 PYTHON_BACKEND_URL=http://localhost:8000
 ```
 
@@ -162,7 +164,18 @@ python run.py server    # → http://localhost:8000
 npm run dev             # → http://localhost:5173
 ```
 
-Log in as the admin you seeded, create departments + staff from the admin panel, then register a student through the UI to exercise the full flow.
+Log in as the admin you seeded, create departments + staff from the admin panel, then register a student through the UI to exercise the full flow. A guest can open a specific university's assistant with `http://localhost:5173/?u=<tenant slug>`.
+
+### Tests
+
+```bash
+cd server && npm test                  # node --test — matching, CGPA conversion, URL/SSRF guard, scheduler,
+                                       # skill gaps, department suggestion, file store, tenant isolation
+cd client && npm run lint && npm run build
+cd python/eval && python eval.py       # golden-set RAG evaluation against a running AI service (needs INTERNAL_SECRET)
+```
+
+The golden set (`python/eval/golden_set.json`) is the regression check for any change to the RAG prompt, retrieval or chunking — run it before and after. It can set `user_type` per case (guest or student).
 
 ---
 
@@ -246,22 +259,26 @@ AtriumDesk/
 │   └── src/
 │       ├── platform/             # /platform/* Super Admin pages, components, layout
 │       ├── administrator/        # /admin/* pages, components, layout
-│       ├── staff/                # /staff/* dashboard + issue inbox (role-delegable)
-│       ├── student/              # chat, issues, profile, scholarships, jobs, events
-│       ├── guest/                # public landing + guest chatbot
-│       ├── auth/                 # login, register, ProtectedRoute
-│       ├── components/           # Sidebar, NotificationBell, MainLayout
-│       ├── redux/slices/         # auth, chat, issue, notification, platform,
-│       │                         # department, admin{Stats,User,Staff,
-│       │                         # Query,Data,Log} slices
-│       └── utils/                # axios, pythonAxios
+│       ├── staff/                # /staff/* dashboard + issue inbox (role-delegable);
+│       │                         # components/IssueStaffTools (notes, transfer, saved replies)
+│       ├── student/              # chat, issues, scholarships, jobs, events, saved & applications
+│       ├── guest/                # public landing + guest chatbot (+ /embed for the widget)
+│       ├── profile/              # unified profile + "Your data" (export / delete)
+│       ├── auth/                 # login, register, ProtectedRoute, HomeRoute
+│       ├── components/           # Sidebar, NotificationBell, MainLayout, TopNavbar
+│       ├── redux/slices/         # auth, chat, issue, notification, platform, guest,
+│       │                         # saved, department, admin{Stats,User,Staff,
+│       │                         # Query,Data,Log,Listing,FailedQuestions} slices
+│       └── utils/                # axios, branding, guestTenant
+│   └── public/widget.js          # website chat-button script for universities' sites
 ├── server/                       # Node.js / Express
-│   ├── controllers/              # user, chat, issue, department,
+│   ├── controllers/              # user, chat, issue, department, accountData,
 │   │                             # notification, admin*, platform, internal, message
 │   ├── middlewares/              # auth, requireRole, requireStaffPermission, upload,
 │   │                             # audit, platformAuth, auditPlatformWrites
-│   ├── models/                   # User, Issue, Department, Chat, Listing,
-│   │                             # Notification, AuditLog, LoginEvent, AiUsageLog
+│   ├── models/                   # User, Issue, Department, Chat, Listing, SavedListing,
+│   │                             # Notification, AuditLog, LoginEvent, AiUsageLog,
+│   │                             # FailedQuestion, AnswerFeedback, CannedResponse
 │   │                             # (tenant-scoped, see models/registry.js)
 │   │                             # + models/platform/ (Tenant, SuperAdminUser,
 │   │                             # PlatformAuditLog — PlatformDB, not per-tenant)
@@ -275,6 +292,7 @@ AtriumDesk/
 │   ├── moderation.py             # English + Roman-Urdu profanity check (safety filter — kept even though the chatbot replies in English only)
 │   ├── scraper.py                # self-service per-tenant website scraper
 │   ├── kb_snapshot.py            # knowledge-base snapshot to R2 (Cloudflare)
+│   ├── eval/                     # golden-set evaluation (eval.py + golden_set.json)
 │   └── chroma_db/                # persistent vector store (gitignored)
 ├── cloudflare/                   # Worker + container config for Cloudflare
 └── .github/workflows/            # deploy-cloudflare.yml ("Deploy to Cloudflare")
@@ -285,7 +303,16 @@ AtriumDesk/
 ## 📚 Documentation
 
 - **`AGENTS.md`** — the complete, unabridged spec (all planning revisions, current governing answers per decision area). This is the source of truth for AI coding agents and for resolving any ambiguity in this README.
-- **`doc/Guide.pdf`** — the same content as `AGENTS.md`, regenerated as a human-readable PDF. `doc/` holds internal/academic working files and isn't tracked in git (see `.gitignore`), so this PDF lives locally only, not on GitHub.
+- **`doc/Guide.pdf`** — the same content as `AGENTS.md`, regenerated as a human-readable PDF.
+- **`doc/AtriumDesk_Review_2026-10.pdf`** (+ `.md` source) — the October 2026 review: research against comparable platforms, every change and bug fix, API and data-model changes, how to use the new features, verification and open items. Summarised as Part E of `AGENTS.md`.
+- **`client/README.md`** — the web client: routes per role, scripts, the PWA and the embed/widget.
+
+`doc/` holds internal/academic working files and isn't tracked in git (see `.gitignore`), so its PDFs live locally only, not on GitHub.
+
+### Known issues
+
+- Guests asking about the university's scholarships in some wordings get "no information" while students get an answer (golden case `guest-scholarships-coverage`); a guest-scope prompt fix is pending measurement.
+- The AI service's failover needs valid keys for every provider in `CLOUD_LLM_ORDER`; a free Groq key allows 200,000 tokens a day.
 
 ---
 
