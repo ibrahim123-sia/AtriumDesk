@@ -1,0 +1,85 @@
+# Deploys AtriumDesk to Cloudflare. Run it from the Actions tab
+# ("Deploy to Cloudflare" → Run workflow). GitHub's runners have Docker,
+# which wrangler needs to build the two container images.
+#
+# One-time setup (README.md → "Deploying to Cloudflare"):
+#   Repository secrets:   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+#   Repository variables: VITE_SERVER_URL  (e.g. https://atriumdesk-api.<you>.workers.dev)
+#                         VITE_PYTHON_URL  (the same URL + /ai)
+#   App secrets (MONGODB_URI, JWT_SECRET, ...) are stored on the Worker with
+#   `npx wrangler secret put` — they are not needed here.
+name: Deploy to Cloudflare
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: What to deploy
+        type: choice
+        options: [all, backend, web]
+        default: all
+
+concurrency:
+  group: deploy-cloudflare
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    name: Backend (Worker + API server + AI service containers)
+    if: inputs.target != 'web'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # The AI service image (torch, Chromium, models) needs several GB of build space.
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Worker dependencies
+        working-directory: cloudflare
+        run: npm install --no-audit --no-fund
+
+      - name: Deploy Worker and containers
+        working-directory: cloudflare
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  web:
+    name: Web client (static assets)
+    if: inputs.target != 'backend'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check build settings
+        run: |
+          if [ -z "${{ vars.VITE_SERVER_URL }}" ] || [ -z "${{ vars.VITE_PYTHON_URL }}" ]; then
+            echo "::error::Set the VITE_SERVER_URL and VITE_PYTHON_URL repository variables first."
+            exit 1
+          fi
+
+      - name: Install and build
+        working-directory: client
+        run: npm install --no-audit --no-fund && npm run build
+        env:
+          VITE_SERVER_URL: ${{ vars.VITE_SERVER_URL }}
+          VITE_PYTHON_URL: ${{ vars.VITE_PYTHON_URL }}
+
+      - name: Deploy static site
+        working-directory: client
+        run: npx --yes wrangler@4.151.0 deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

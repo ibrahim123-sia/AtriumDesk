@@ -1,0 +1,86 @@
+// AtriumDesk backend: Worker + API server container + AI service container.
+// Deploy from this folder with `npm run deploy` (Docker must be running) or
+// via .github/workflows/deploy-cloudflare.yml. Guide: README.md → "Deploying
+// to Cloudflare".
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "atriumdesk-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+
+  "containers": [
+    {
+      // server/ — Express + Mongoose (every tenant's database on one Atlas
+      // cluster). 1 GiB RAM.
+      "class_name": "ApiServer",
+      "image": "../server/Dockerfile",
+      "image_build_context": "../server",
+      "instance_type": "basic",
+      // One instance: rate limits, guest sessions and the tenant cache live
+      // in memory.
+      "max_instances": 1
+    },
+    {
+      // python/ — FastAPI, ChromaDB, sentence-transformers, faster-whisper,
+      // Crawl4AI (headless Chromium). 4 GiB RAM / 8 GB disk for torch,
+      // Chromium and the models baked into the image.
+      "class_name": "AiService",
+      "image": "../python/Dockerfile",
+      "image_build_context": "../python",
+      "instance_type": "standard-1",
+      // One instance: ChromaDB is a single on-disk store (snapshotted to R2).
+      "max_instances": 1
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "API_SERVER", "class_name": "ApiServer" },
+      { "name": "AI_SERVICE", "class_name": "AiService" }
+    ]
+  },
+  "exports": {
+    "ApiServer": { "type": "durable-object", "storage": "sqlite" },
+    "AiService": { "type": "durable-object", "storage": "sqlite" }
+  },
+
+  // Uploads (issue attachments, avatars, tenant logos, activity images), the
+  // ChromaDB snapshot (kb/chroma_db.tar.gz) and its daily backups
+  // (kb/backups/). Create it first: npx wrangler r2 bucket create atriumdesk-uploads
+  "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "atriumdesk-uploads" }],
+
+  // Background jobs (were node-cron timers in the API server, which stop
+  // while its container sleeps): SLA escalation and due recurring sources
+  // every hour, the daily jobs at their hour (server/services/scheduler.js
+  // DAILY_JOB_HOURS, in TZ below). Hourly, not every 30 minutes: each run
+  // wakes the API server, which then stays up for its sleepAfter
+  // (src/index.js).
+  "triggers": { "crons": ["0 * * * *"] },
+
+  // Non-secret settings. Secrets (MONGODB_URI, JWT_SECRET,
+  // PLATFORM_JWT_SECRET, INTERNAL_SECRET, FIELD_ENCRYPTION_KEY,
+  // R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, GROQ_API_KEY, GEMINI_API_KEY,
+  // EMAIL_USER, EMAIL_PASS, ...) are set with `npx wrangler secret put <NAME>`
+  // — never here.
+  "vars": {
+    // This Worker's own public URL, e.g. https://atriumdesk-api.<you>.workers.dev
+    // or https://api.your-domain.com (no trailing slash).
+    "PUBLIC_URL": "https://atriumdesk-api.REPLACE-ME.workers.dev",
+    // The web app's URL (CORS + links in emails), no trailing slash.
+    "CLIENT_URL": "https://atriumdesk-web.REPLACE-ME.workers.dev",
+    // Cloudflare account id (R2 endpoint) and the bucket above.
+    "R2_ACCOUNT_ID": "REPLACE-ME",
+    "R2_BUCKET": "atriumdesk-uploads",
+    // Time zone the daily jobs' hours are in (backup 1am, reminders 2am,
+    // listing expiry 3am, digests 6am).
+    "TZ": "Asia/Karachi",
+    // Tenant that guest/legacy traffic resolves to.
+    "DEFAULT_TENANT_SLUG": "maju",
+    "CLOUD_LLM_ORDER": "groq,gemini",
+    "GROQ_MODEL": "openai/gpt-oss-120b",
+    "GEMINI_MODEL": "gemini-2.5-flash",
+    // Must match the model baked into python/Dockerfile (ARG WHISPER_MODEL).
+    "WHISPER_MODEL": "base"
+  }
+}

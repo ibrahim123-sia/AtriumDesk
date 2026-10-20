@@ -79,3 +79,8 @@ screenshots/
 
 # local secret helper — do not commit
 neon.txt
+
+# Cloudflare (wrangler local state and local secrets)
+.wrangler/
+.dev.vars
+.dev.vars.*

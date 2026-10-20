@@ -1,0 +1,17 @@
+{
+  "name": "atriumdesk-cloudflare",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker + Containers for the AtriumDesk API server and AI service",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "check": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "logs": "wrangler tail"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7"
+  },
+  "devDependencies": {
+    "wrangler": "^4.151.0"
+  }
+}

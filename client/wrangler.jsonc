@@ -1,0 +1,15 @@
+// Web client on Cloudflare (Workers static assets). Build first with the API
+// URLs baked in, then deploy:
+//   VITE_SERVER_URL=https://atriumdesk-api.<you>.workers.dev \
+//   VITE_PYTHON_URL=https://atriumdesk-api.<you>.workers.dev/ai \
+//   npm run build && npx wrangler deploy
+{
+  "$schema": "https://unpkg.com/wrangler@4.151.0/config-schema.json",
+  "name": "atriumdesk-web",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    // BrowserRouter: unknown paths (/chat, /admin/..., /platform/...) serve index.html.
+    "not_found_handling": "single-page-application"
+  }
+}

@@ -1,0 +1,13 @@
+# Cloudflare static assets: Vite's hashed bundles never change, cache them
+# for a year; everything else (index.html) is revalidated on each visit.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The PWA service worker must be re-checked on every visit, or a new deploy
+# keeps serving the old app shell.
+/sw.js
+  Cache-Control: no-cache
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
