@@ -23,6 +23,7 @@ import { getTenantModel as getPlatformTenantModel } from "../models/platform/Ten
 import { notify, sendDigestEmail } from "./notify.js";
 import { evaluateHardRules, MatchState } from "./matching.js";
 import { buildStudentMatchProfile } from "./studentMatchProfile.js";
+import { findDueSources } from "./dueSources.js";
 
 const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://localhost:8000";
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
@@ -308,15 +309,101 @@ export async function runChromaBackupCheck() {
   console.log(`Chroma backup created: ${data.path} (${data.sizeBytes} bytes, pruned ${data.prunedCount})`);
 }
 
+/**
+ * Rev 5 §9.3 recurring sources. Python's own poll loop asks Node what's due
+ * every 30 minutes; with that loop off (DISABLE_SCHEDULERS on Cloudflare,
+ * where the AI container sleeps when idle) this wakes it instead — and only
+ * when something is actually due, so an idle platform never wakes it.
+ * Python then fetches the due list itself, same ask-for-work flow.
+ */
+export async function runDueSourceScrapes() {
+  const due = await findDueSources();
+  if (!due.length) return 0;
+  const response = await fetch(`${PYTHON_BACKEND_URL}/internal/poll-sources`, {
+    method: "POST",
+    headers: { "x-internal-secret": INTERNAL_SECRET || "" },
+  });
+  if (!response.ok) {
+    throw new Error(`Python /internal/poll-sources returned ${response.status}`);
+  }
+  console.log(`Recurring sources: ${due.length} due, Python poll started`);
+  return due.length;
+}
+
+// Hour of day (server local time — set TZ) each daily job runs at. Shared by
+// startScheduler()'s cron expressions and runScheduledJobs(), so in-process
+// cron and an external hourly trigger run them at the same time. Order
+// matters: the backup runs first, reminders before the expiry check (a
+// reminder can still fire for a listing expiring today), digests last.
+export const DAILY_JOB_HOURS = {
+  chromaBackup: 1,
+  deadlineReminders: 2,
+  expiredListings: 3,
+  digests: 6,
+};
+
+const DAILY_JOBS = {
+  chromaBackup: () => runChromaBackupCheck(),
+  deadlineReminders: () => runDeadlineReminderCheck(),
+  expiredListings: () => runExpiredListingsCheck(),
+  digests: () => runDigestCheck(),
+};
+
+/** Names of the daily jobs scheduled for `hour` (0-23), in run order. */
+export function dailyJobsForHour(hour) {
+  return Object.keys(DAILY_JOB_HOURS).filter((name) => DAILY_JOB_HOURS[name] === hour);
+}
+
+let jobsRunning = false;
+
+/**
+ * Every job, run once from outside the process — meant to be called at the
+ * top of every hour (the Cloudflare Worker's Cron Trigger, via POST
+ * /api/admin/internal/run-jobs). SLA escalation and due recurring sources
+ * run every time; each daily job runs when the hour matches its
+ * DAILY_JOB_HOURS entry. One failing job never stops the others. Returns a
+ * per-job result map ({ skipped: true } when a run is already in progress).
+ */
+export async function runScheduledJobs(now = new Date()) {
+  if (jobsRunning) return { skipped: true };
+  jobsRunning = true;
+  const results = {};
+  const run = async (name, job) => {
+    try {
+      const value = await job();
+      results[name] = value === undefined ? "ok" : value;
+    } catch (error) {
+      console.error(`Scheduled job ${name} failed:`, error);
+      results[name] = `failed: ${error.message}`;
+    }
+  };
+  try {
+    await run("slaEscalation", runSlaEscalationCheck);
+    await run("recurringSources", runDueSourceScrapes);
+    for (const name of dailyJobsForHour(now.getHours())) {
+      await run(name, DAILY_JOBS[name]);
+    }
+  } finally {
+    jobsRunning = false;
+  }
+  return results;
+}
+
 let started = false;
 
 /**
  * Registers all cron jobs. Idempotent — calling twice (e.g. hot reload in
- * dev) does not double-schedule.
+ * dev) does not double-schedule. DISABLE_SCHEDULERS=true skips it: on
+ * Cloudflare the container sleeps when idle (its timers would stop), so the
+ * Worker's Cron Trigger calls runScheduledJobs() instead.
  */
 export function startScheduler() {
   if (started) return;
   started = true;
+  if (process.env.DISABLE_SCHEDULERS === "true") {
+    console.log("Scheduler disabled (DISABLE_SCHEDULERS=true) — jobs run via POST /api/admin/internal/run-jobs");
+    return;
+  }
 
   // Every 30 minutes, per §4.1's "every 30-60 minutes" guidance.
   cron.schedule("*/30 * * * *", () => {
@@ -326,7 +413,7 @@ export function startScheduler() {
   });
 
   // Once a day — a listing's deadline doesn't need minute-level freshness.
-  cron.schedule("0 3 * * *", () => {
+  cron.schedule(`0 ${DAILY_JOB_HOURS.expiredListings} * * *`, () => {
     runExpiredListingsCheck().catch((error) => {
       console.error("runExpiredListingsCheck failed:", error);
     });
@@ -334,7 +421,7 @@ export function startScheduler() {
 
   // Runs before the expiry check (2am vs 3am) so a reminder can still fire
   // for a listing that's about to expire today.
-  cron.schedule("0 2 * * *", () => {
+  cron.schedule(`0 ${DAILY_JOB_HOURS.deadlineReminders} * * *`, () => {
     runDeadlineReminderCheck().catch((error) => {
       console.error("runDeadlineReminderCheck failed:", error);
     });
@@ -342,7 +429,7 @@ export function startScheduler() {
 
   // Once a day; internally splits daily-vs-weekly students by cadence
   // (weekly only fires on the Monday run) rather than needing two crons.
-  cron.schedule("0 6 * * *", () => {
+  cron.schedule(`0 ${DAILY_JOB_HOURS.digests} * * *`, () => {
     runDigestCheck().catch((error) => {
       console.error("runDigestCheck failed:", error);
     });
@@ -350,7 +437,7 @@ export function startScheduler() {
 
   // Once a day, off-peak — before the 2am/3am/6am jobs above so a corrupt
   // backup source is caught early rather than after a day of other writes.
-  cron.schedule("0 1 * * *", () => {
+  cron.schedule(`0 ${DAILY_JOB_HOURS.chromaBackup} * * *`, () => {
     runChromaBackupCheck().catch((error) => {
       console.error("runChromaBackupCheck failed:", error);
     });

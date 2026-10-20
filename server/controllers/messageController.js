@@ -176,7 +176,7 @@ async function transcribeWithPython(audioPath) {
     const response = await fetch(`${PYTHON_BACKEND_URL}/transcribe`, {
       method: "POST",
       body: form,
-      headers: form.getHeaders(),
+      headers: { ...form.getHeaders(), "x-internal-secret": INTERNAL_SECRET || "" },
       timeout: 120000, // Whisper on CPU can take a while on long clips
     });
 

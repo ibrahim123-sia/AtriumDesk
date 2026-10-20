@@ -19,7 +19,7 @@ import {
   getIssueAnalytics,
   getAdminIssue,
 } from "../controllers/adminIssueController.js";
-import { verifyAdmin, flagUser, sourcesDue, reportSourceRun } from "../controllers/internalController.js";
+import { verifyAdmin, flagUser, sourcesDue, reportSourceRun, runJobs } from "../controllers/internalController.js";
 import {
   listListings,
   getListing,
@@ -73,6 +73,7 @@ router.get("/internal/verify-admin", protect, verifyAdmin);
 router.get("/internal/sources-due", sourcesDue);
 router.post("/internal/sources/:sourceId/report", reportSourceRun);
 router.post("/internal/content-scrape/report", reportContentScrapeResult);
+router.post("/internal/run-jobs", runJobs);
 
 // User request — Administrator can delegate specific admin capabilities
 // (Data/Content/Query/Failed Questions) to a staff member instead of the

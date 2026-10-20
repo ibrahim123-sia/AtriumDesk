@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
@@ -12,6 +10,7 @@ import { peekGuestSessionMessages, deleteGuestSession } from "./guestChatControl
 import { getMailerForTenant, verifyDefaultTransporter } from "../services/mailer.js";
 import { MAX_MATCHED_INPUT_LENGTH } from "../services/regexSafety.js";
 import { cgpaToGerman, cgpaToPercentage } from "../services/cgpaConversion.js";
+import { deleteUpload } from "../services/fileStore.js";
 
 verifyDefaultTransporter();
 
@@ -1012,11 +1011,10 @@ export const updateProfile = async (req, res) => {
     }
 
     if (req.file) {
-      // Delete the old avatar file if it was stored locally. Resolve against
-      // process.cwd() so this works regardless of how the server was started.
+      // Delete the old avatar if it was one of our uploads (disk + R2,
+      // best-effort — services/fileStore.js).
       if (user.profilePicture && user.profilePicture.startsWith("/uploads/avatars/")) {
-        const oldPath = path.join(process.cwd(), user.profilePicture.replace(/^\//, ""));
-        fs.unlink(oldPath, () => {}); // best-effort; ignore ENOENT
+        deleteUpload(user.profilePicture);
       }
       user.profilePicture = `/uploads/avatars/${req.file.filename}`;
     }
@@ -1167,7 +1165,7 @@ export const parseCv = async (req, res) => {
     const response = await fetch(`${PYTHON_BACKEND_URL}/cv/parse`, {
       method: "POST",
       body: form,
-      headers: form.getHeaders(),
+      headers: { ...form.getHeaders(), "x-internal-secret": process.env.INTERNAL_SECRET || "" },
       timeout: 60000,
     });
 

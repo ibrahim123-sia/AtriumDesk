@@ -1,6 +1,7 @@
 import multer from "multer";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
+import { putUpload, deleteUpload } from "../services/fileStore.js";
 
 const ISSUE_UPLOAD_DIR = process.env.UPLOAD_DIR || "uploads/issues";
 const AVATAR_UPLOAD_DIR = "uploads/avatars";
@@ -10,6 +11,32 @@ const ACTIVITY_IMAGE_UPLOAD_DIR = "uploads/activity-images";
 for (const dir of [ISSUE_UPLOAD_DIR, AVATAR_UPLOAD_DIR, TENANT_LOGO_UPLOAD_DIR, ACTIVITY_IMAGE_UPLOAD_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
+
+// Wraps a disk storage so each saved file is also copied to R2 when it is
+// configured (services/fileStore.js) — a Cloudflare container's disk doesn't
+// survive a sleep or redeploy. `urlDir` is the public folder the controllers
+// build URLs from ("uploads/issues" → "/uploads/issues/<file>"), so the
+// bucket key always matches the stored URL. The key is kept on the file
+// object (file.storageKey) for cleanup.
+const withRemoteCopy = (disk, urlDir) => ({
+  _handleFile(req, file, cb) {
+    disk._handleFile(req, file, (err, info) => {
+      if (err) return cb(err);
+      const storageKey = `${urlDir}/${info.filename}`;
+      putUpload(info.path, storageKey, file.mimetype).then(
+        () => cb(null, { ...info, storageKey }),
+        (error) => {
+          fs.unlink(info.path, () => {});
+          cb(error);
+        }
+      );
+    });
+  },
+  _removeFile(req, file, cb) {
+    deleteUpload(file.storageKey, file.path);
+    cb(null);
+  },
+});
 
 // The on-disk extension must come from the VERIFIED mimetype, never from
 // the client-supplied `originalname` — those are two independent
@@ -27,14 +54,17 @@ const MIME_TO_EXT = {
   "image/webp": ".webp",
 };
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, ISSUE_UPLOAD_DIR);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${uuidv4()}${MIME_TO_EXT[file.mimetype] || ""}`);
-  },
-});
+const storage = withRemoteCopy(
+  multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, ISSUE_UPLOAD_DIR);
+    },
+    filename: (req, file, cb) => {
+      cb(null, `${uuidv4()}${MIME_TO_EXT[file.mimetype] || ""}`);
+    },
+  }),
+  "uploads/issues"
+);
 
 const ALLOWED_MIME = new Set(Object.keys(MIME_TO_EXT));
 
@@ -62,14 +92,17 @@ export const issueUpload = multer({
 
 const AVATAR_ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 
-const avatarStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, AVATAR_UPLOAD_DIR);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${uuidv4()}${MIME_TO_EXT[file.mimetype] || ""}`);
-  },
-});
+const avatarStorage = withRemoteCopy(
+  multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, AVATAR_UPLOAD_DIR);
+    },
+    filename: (req, file, cb) => {
+      cb(null, `${uuidv4()}${MIME_TO_EXT[file.mimetype] || ""}`);
+    },
+  }),
+  AVATAR_UPLOAD_DIR
+);
 
 // Explicit allow-list, not a `startsWith("image/")` check — that would also
 // pass "image/svg+xml", and an SVG can embed a <script> tag (a different
@@ -93,14 +126,17 @@ export const avatarUpload = multer({
 // university" at tenant-creation time) — same shape as avatarUpload.
 // ---------------------------------------------------------------------------
 
-const tenantLogoStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, TENANT_LOGO_UPLOAD_DIR);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${uuidv4()}${MIME_TO_EXT[file.mimetype] || ""}`);
-  },
-});
+const tenantLogoStorage = withRemoteCopy(
+  multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, TENANT_LOGO_UPLOAD_DIR);
+    },
+    filename: (req, file, cb) => {
+      cb(null, `${uuidv4()}${MIME_TO_EXT[file.mimetype] || ""}`);
+    },
+  }),
+  TENANT_LOGO_UPLOAD_DIR
+);
 
 export const tenantLogoUpload = multer({
   storage: tenantLogoStorage,
@@ -118,14 +154,17 @@ export const tenantLogoUpload = multer({
 // on one tab are multiple separate upload calls, not a single multi-file one).
 // ---------------------------------------------------------------------------
 
-const activityImageStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, ACTIVITY_IMAGE_UPLOAD_DIR);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${uuidv4()}${MIME_TO_EXT[file.mimetype] || ""}`);
-  },
-});
+const activityImageStorage = withRemoteCopy(
+  multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, ACTIVITY_IMAGE_UPLOAD_DIR);
+    },
+    filename: (req, file, cb) => {
+      cb(null, `${uuidv4()}${MIME_TO_EXT[file.mimetype] || ""}`);
+    },
+  }),
+  ACTIVITY_IMAGE_UPLOAD_DIR
+);
 
 export const activityImageUpload = multer({
   storage: activityImageStorage,

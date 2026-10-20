@@ -1,12 +1,12 @@
-import fs from "fs";
-import path from "path";
 import { notify } from "../services/notify.js";
 import { suggestDepartment } from "../services/departmentSuggestion.js";
+import { deleteUpload } from "../services/fileStore.js";
 
+// Disk + R2 copy (services/fileStore.js), best-effort.
 const cleanupFiles = (files) => {
   if (!files) return;
   for (const f of files) {
-    fs.unlink(f.path, () => {});
+    deleteUpload(f.storageKey, f.path);
   }
 };
 

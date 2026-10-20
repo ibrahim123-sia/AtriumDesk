@@ -20,8 +20,17 @@ import eventRouter from "./routes/eventRoutes.js";
 import savedRouter from "./routes/savedRoutes.js";
 import manifestRouter from "./routes/manifestRoutes.js";
 import { startScheduler } from "./services/scheduler.js";
+import { serveUploadFromRemote } from "./services/fileStore.js";
 
 const app = express();
+// Behind a proxy (the Cloudflare Worker sets X-Forwarded-For to the
+// visitor's IP), req.ip must come from that header — otherwise every
+// visitor shares the proxy's address and one rate-limit bucket. Number of
+// trusted hops (e.g. 1), or any value Express's "trust proxy" accepts.
+if (process.env.TRUST_PROXY) {
+  const hops = Number(process.env.TRUST_PROXY);
+  app.set("trust proxy", Number.isInteger(hops) ? hops : process.env.TRUST_PROXY);
+}
 await connectDB();
 startScheduler();
 
@@ -43,7 +52,9 @@ app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:5173" }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-app.use("/uploads", express.static(UPLOAD_ROOT));
+// A file missing on this disk (a fresh Cloudflare container) is read from
+// R2 when it is configured — services/fileStore.js.
+app.use("/uploads", express.static(UPLOAD_ROOT), serveUploadFromRemote);
 
 // Routes
 app.get("/", (req, res) => res.send("AtriumDesk Server is Live"));

@@ -1,11 +1,9 @@
 import { getModelsForTenant } from "../models/registry.js";
 import { resolveTenantBySlug } from "../services/tenantRegistry.js";
-import { getTenantModel as getPlatformTenantModel } from "../models/platform/Tenant.js";
 import { applyScrapeResult, recordScrapeFailure, recordListingGone } from "./adminSourceController.js";
 import { isValidInternalSecret } from "../services/verifyInternalSecret.js";
-
-// Hours between recurring runs — matches Source.frequency's two allowed values.
-const FREQUENCY_HOURS = { daily: 24, weekly: 24 * 7 };
+import { findDueSources } from "../services/dueSources.js";
+import { runScheduledJobs } from "../services/scheduler.js";
 
 const requireInternal = (req) => isValidInternalSecret(req.headers["x-internal-secret"]);
 
@@ -93,24 +91,7 @@ export const sourcesDue = async (req, res) => {
     return res.status(403).json({ success: false, message: "Internal secret missing or invalid" });
   }
   try {
-    const Tenant = getPlatformTenantModel();
-    const tenants = await Tenant.find({ status: "active" });
-    const due = [];
-
-    for (const tenant of tenants) {
-      const models = getModelsForTenant(tenant);
-      const sources = await models.Source.find({ status: "active", frequency: { $ne: null } });
-      const now = Date.now();
-      for (const source of sources) {
-        const hours = FREQUENCY_HOURS[source.frequency];
-        const isDue = !source.lastRun || now - source.lastRun.getTime() >= hours * 60 * 60 * 1000;
-        if (isDue) {
-          due.push({ tenantSlug: tenant.slug, sourceId: source._id.toString(), url: source.url, type: source.type });
-        }
-      }
-    }
-
-    res.json({ success: true, due });
+    res.json({ success: true, due: await findDueSources() });
   } catch (error) {
     console.error("sourcesDue error:", error);
     res.status(500).json({ success: false, message: "Failed to compute due sources" });
@@ -152,4 +133,15 @@ export const reportSourceRun = async (req, res) => {
     console.error("reportSourceRun error:", error);
     res.status(500).json({ success: false, message: "Failed to record source run" });
   }
+};
+
+// POST /api/admin/internal/run-jobs — the scheduler's jobs, run once on
+// demand. On Cloudflare the container sleeps when idle (in-process cron
+// timers stop with it), so the Worker's hourly Cron Trigger calls this
+// instead; see services/scheduler.js's runScheduledJobs for what runs when.
+export const runJobs = async (req, res) => {
+  if (!requireInternal(req)) {
+    return res.status(403).json({ success: false, message: "Internal secret missing or invalid" });
+  }
+  res.json({ success: true, jobs: await runScheduledJobs() });
 };
