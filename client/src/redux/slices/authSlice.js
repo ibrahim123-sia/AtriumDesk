@@ -1,4 +1,5 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import { disablePush } from "../../utils/push";
 import axios from "../../utils/axios";
 import { validateEmail } from "../../utils/validation";
 
@@ -358,7 +359,9 @@ export const fetchUser = createAsyncThunk(
 
 export const logoutUser = createAsyncThunk(
   "auth/logout",
-  async (_, { dispatch }) => {
+  async (_, { dispatch, getState }) => {
+    // Not awaited: logging out must not wait on the network.
+    disablePush(getState().auth.token).catch(() => {});
     localStorage.removeItem("token");
     writeImpersonation(null);
     dispatch(resetChat());

@@ -12,7 +12,7 @@ process.env.SMTP_PORT = "1";
 process.env.SMTP_USER = "";
 process.env.PYTHON_BACKEND_URL = "http://127.0.0.1:1";
 
-const { default: test } = await import("node:test");
+const { default: test, mock } = await import("node:test");
 const { default: assert } = await import("node:assert/strict");
 await import("dotenv/config");
 const { default: mongoose } = await import("mongoose");
@@ -32,6 +32,9 @@ const { textMessageController } = await import("../controllers/messageController
 const { updateTenantSettings } = await import("../controllers/tenantSettingsController.js");
 const rsvps = await import("../controllers/eventRsvpController.js");
 const { deleteListing } = await import("../controllers/adminListingController.js");
+const { default: webpush } = await import("web-push");
+const { subscribePush, unsubscribePush } = await import("../controllers/pushController.js");
+const { notify } = await import("../services/notify.js");
 
 const DB = "test_service_desk";
 const SLUG = "test-service-desk";
@@ -434,5 +437,62 @@ test("saved searches alert a student once about new matching listings", async ()
   assert.equal(list.body.searches.length, 1);
   assert.equal((await call(savedSearches.deleteSavedSearch, { user: staffA, params: { id: String(made.body.search._id) } })).statusCode, 404);
   assert.equal((await call(savedSearches.deleteSavedSearch, { user: student, params: { id: String(made.body.search._id) } })).statusCode, 200);
+});
+
+test("notifications reach the devices someone turned them on for; bad endpoints are refused", async () => {
+  if (!process.env.VAPID_PUBLIC_KEY) {
+    const keys = webpush.generateVAPIDKeys();
+    process.env.VAPID_PUBLIC_KEY = keys.publicKey;
+    process.env.VAPID_PRIVATE_KEY = keys.privateKey;
+  }
+  const keys = { p256dh: "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM", auth: "tBHItJI5svbpez7KI4CCXg" };
+  for (const endpoint of [
+    "https://127.0.0.1/push",
+    "http://fcm.googleapis.com/fcm/send/x",
+    "https://fcm.googleapis.com.evil.example/x",
+    "https://evil.example/fcm.googleapis.com",
+    "https://fcm.googleapis.com:8443/x",
+    "https://google.com.evil.example/x",
+  ]) {
+    const res = await call(subscribePush, { user: student, body: { endpoint, keys } });
+    assert.equal(res.statusCode, 400, endpoint);
+  }
+  assert.equal((await call(subscribePush, { user: student, body: { endpoint: "https://fcm.googleapis.com/fcm/send/ok", keys: { p256dh: "a b", auth: "x" } } })).statusCode, 400);
+
+  assert.equal((await call(subscribePush, { user: student, body: { endpoint: "https://jmt17.google.com/fcm/send/sd-chromium", keys } })).statusCode, 201);
+  await models.PushSubscription.deleteOne({ endpoint: "https://jmt17.google.com/fcm/send/sd-chromium" });
+  const ok = "https://fcm.googleapis.com/fcm/send/sd-ok";
+  const gone = "https://updates.push.services.mozilla.com/wpush/v2/sd-gone";
+  assert.equal((await call(subscribePush, { user: student, body: { endpoint: ok, keys } })).statusCode, 201);
+  assert.equal((await call(subscribePush, { user: student, body: { endpoint: gone, keys } })).statusCode, 201);
+
+  const sent = [];
+  const sendMock = mock.method(webpush, "sendNotification", async (sub, payload) => {
+    sent.push({ endpoint: sub.endpoint, payload: JSON.parse(payload) });
+    if (sub.endpoint === gone) throw Object.assign(new Error("Gone"), { statusCode: 410 });
+    return { statusCode: 201 };
+  });
+  try {
+    await notify(models.Notification, student, { type: "issue_replied", message: "Staff replied to your issue", link: "/my-issues" });
+    await settle();
+    assert.equal(sent.length, 2);
+    assert.deepEqual(sent.find((s) => s.endpoint === ok).payload, { title: "AtriumDesk", body: "Staff replied to your issue", url: "/my-issues" });
+    assert.equal(await models.PushSubscription.countDocuments({ endpoint: gone }), 0, "a gone subscription is removed");
+
+    // The device changes hands (shared computer): only the new owner gets pushes.
+    assert.equal((await call(subscribePush, { user: staffA, body: { endpoint: ok, keys } })).statusCode, 201);
+    sent.length = 0;
+    await notify(models.Notification, student, { type: "issue_replied", message: "Another reply", link: "/my-issues" });
+    await settle();
+    assert.equal(sent.length, 0);
+
+    // Someone else can't switch off a device that isn't theirs.
+    await call(unsubscribePush, { user: student, body: { endpoint: ok } });
+    assert.equal(await models.PushSubscription.countDocuments({ endpoint: ok, userId: staffA._id }), 1);
+    await call(unsubscribePush, { user: staffA, body: { endpoint: ok } });
+    assert.equal(await models.PushSubscription.countDocuments({ endpoint: ok }), 0);
+  } finally {
+    sendMock.mock.restore();
+  }
 });
 

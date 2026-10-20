@@ -28,6 +28,7 @@
     "node-cron": "^4.6.0",
     "node-fetch": "^3.3.2",
     "nodemailer": "^10.0.10",
-    "uuid": "^14.0.2"
+    "uuid": "^14.0.2",
+    "web-push": "^3.6.7"
   }
 }

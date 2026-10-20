@@ -17,6 +17,7 @@ import { answerFeedbackSchema } from "./AnswerFeedback.js";
 import { cannedResponseSchema } from "./CannedResponse.js";
 import { eventRsvpSchema } from "./EventRsvp.js";
 import { savedSearchSchema } from "./SavedSearch.js";
+import { pushSubscriptionSchema } from "./PushSubscription.js";
 import { getListingModel, getScholarshipModel, getJobModel, getEventModel } from "./Listing.js";
 
 // Compiles (or reuses an already-compiled) model on a given tenant Connection.
@@ -48,6 +49,7 @@ export const getTenantModels = (connection) => {
   const CannedResponse = getOrCreateModel(connection, "CannedResponse", cannedResponseSchema);
   const EventRsvp = getOrCreateModel(connection, "EventRsvp", eventRsvpSchema);
   const SavedSearch = getOrCreateModel(connection, "SavedSearch", savedSearchSchema);
+  const PushSubscription = getOrCreateModel(connection, "PushSubscription", pushSubscriptionSchema);
   // Discriminator models — must attach to the SAME base Listing model
   // instance on this connection, so getListingModel/get*Model are called
   // directly rather than through getOrCreateModel (see models/Listing.js).
@@ -57,7 +59,7 @@ export const getTenantModels = (connection) => {
   const Event = getEventModel(connection);
   return {
     Department, AuditLog, LoginEvent, User, Issue, Chat, Notification,
-    DepartmentExample, FailedQuestion, Source, MatchExplanation, SavedListing, AiUsageLog, ActivityTab, AnswerFeedback, CannedResponse, EventRsvp, SavedSearch,
+    DepartmentExample, FailedQuestion, Source, MatchExplanation, SavedListing, AiUsageLog, ActivityTab, AnswerFeedback, CannedResponse, EventRsvp, SavedSearch, PushSubscription,
     Listing, Scholarship, Job, Event,
   };
 };

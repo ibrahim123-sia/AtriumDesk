@@ -91,6 +91,7 @@ export const deleteMyAccount = async (req, res) => {
       req.models.AnswerFeedback.deleteMany({ userId }),
       req.models.EventRsvp.deleteMany({ userId }),
       req.models.SavedSearch.deleteMany({ userId }),
+      req.models.PushSubscription.deleteMany({ userId }),
       req.models.FailedQuestion.updateMany({ userId }, { $set: { userId: null } }),
       req.models.AiUsageLog.updateMany({ userId }, { $set: { userId: null } }),
       req.models.LoginEvent.updateMany({ userId }, { $set: { email: DELETED_EMAIL } }),

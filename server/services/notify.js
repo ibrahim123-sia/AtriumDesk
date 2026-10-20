@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { sendPush } from "./push.js";
 import { getMailerForTenant } from "./mailer.js";
 
 const DEFAULT_BRAND_NAME = "AtriumDesk";
@@ -122,6 +123,15 @@ export const sendDirectEmail = async ({ to, subject, heading, body, link, brandi
   }
 };
 
+// The same notification on the devices the person turned browser
+// notifications on for — fire-and-forget, never holds up the request.
+const pushToDevices = (NotificationModel, user, branding, message, link) => {
+  const title = branding?.universityShort || branding?.universityName || DEFAULT_BRAND_NAME;
+  sendPush(NotificationModel.db, user._id, { title, body: message, url: link || "/" }).catch((err) =>
+    console.error("notify: push failed", err.message)
+  );
+};
+
 // Rev 5 §10: "Digest, not instant... Digesting needs a new function, a new
 // template, and a new enum value — not a drop-in reuse [of notify()]." One
 // email batching every new strong match since the student's last digest,
@@ -147,6 +157,7 @@ export const sendDigestEmail = async (NotificationModel, user, { items, branding
   } catch (err) {
     console.error("sendDigestEmail: failed to create notification doc", err.message);
   }
+  pushToDevices(NotificationModel, user, branding, message, "/scholarships");
 
   if (!user.email) return;
   try {
@@ -191,6 +202,7 @@ export const notify = async (
   } catch (err) {
     console.error("notify: failed to create notification doc", err.message);
   }
+  pushToDevices(NotificationModel, user, branding, message, link);
 
   if (user.email) {
     try {

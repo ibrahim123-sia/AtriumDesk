@@ -24,6 +24,7 @@ import { updateProfile, updateProfileDetails, changePassword, parseCv } from "..
 import { getPalette } from "../administrator/utils/palette";
 import YourDataCard from "./YourDataCard";
 import SearchAlertsCard from "./SearchAlertsCard";
+import PushNotificationsCard from "./PushNotificationsCard";
 
 const FIELD_LABEL_CLASS = "text-xs font-semibold uppercase block mb-1";
 const FIELD_HINT_CLASS = "text-xs mt-1";
@@ -949,6 +950,7 @@ const Profile = () => {
           </div>
         </form>
 
+        <PushNotificationsCard C={C} />
         {isStudent && <SearchAlertsCard C={C} />}
         {isStudent && <YourDataCard C={C} />}
       </div>
