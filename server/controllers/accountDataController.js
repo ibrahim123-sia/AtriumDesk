@@ -1,6 +1,7 @@
 // Rev 5 §13.3 — "Download my data" and "Delete my account", covering the
 // whole profile. Completes the privacy story §5.3 starts for CVs.
 import bcrypt from "bcryptjs";
+import { fillFreedPlaces } from "./eventRsvpController.js";
 import rateLimit from "express-rate-limit";
 import { deleteUpload } from "../services/fileStore.js";
 
@@ -13,7 +14,7 @@ const DELETED_EMAIL = "deleted-account";
 export const exportMyData = async (req, res) => {
   try {
     const userId = req.user._id;
-    const [account, chats, issues, saved, notifications, answerRatings] = await Promise.all([
+    const [account, chats, issues, saved, notifications, answerRatings, eventRsvps, searchAlerts] = await Promise.all([
       req.models.User.findById(userId).populate("department", "code name").lean(),
       req.models.Chat.find({ userId }).sort({ createdAt: 1 }).lean(),
       req.models.Issue.find({ studentId: userId }).populate("department", "code name").sort({ createdAt: 1 }).lean(),
@@ -22,6 +23,8 @@ export const exportMyData = async (req, res) => {
         .lean(),
       req.models.Notification.find({ userId }).sort({ createdAt: -1 }).limit(2000).lean(),
       req.models.AnswerFeedback.find({ userId }).lean(),
+      req.models.EventRsvp.find({ userId }).populate("eventId", "title date location").lean(),
+      req.models.SavedSearch.find({ userId }).lean(),
     ]);
     if (!account) return res.status(404).json({ success: false, message: "Account not found" });
     delete account.__v;
@@ -38,6 +41,8 @@ export const exportMyData = async (req, res) => {
       savedAndApplications: saved,
       notifications,
       answerRatings,
+      eventRsvps,
+      searchAlerts,
     });
   } catch (error) {
     console.error("exportMyData error:", error);
@@ -77,11 +82,15 @@ export const deleteMyAccount = async (req, res) => {
       return res.status(401).json({ success: false, message: "Password is incorrect" });
     }
     const userId = user._id;
+    // Their event places go to whoever is next on each waitlist.
+    const heldPlaces = await req.models.EventRsvp.find({ userId, status: "going" }).select("eventId");
     await Promise.all([
       req.models.Chat.deleteMany({ userId }),
       req.models.SavedListing.deleteMany({ userId }),
       req.models.Notification.deleteMany({ userId }),
       req.models.AnswerFeedback.deleteMany({ userId }),
+      req.models.EventRsvp.deleteMany({ userId }),
+      req.models.SavedSearch.deleteMany({ userId }),
       req.models.FailedQuestion.updateMany({ userId }, { $set: { userId: null } }),
       req.models.AiUsageLog.updateMany({ userId }, { $set: { userId: null } }),
       req.models.LoginEvent.updateMany({ userId }, { $set: { email: DELETED_EMAIL } }),
@@ -94,6 +103,10 @@ export const deleteMyAccount = async (req, res) => {
     ]);
     if (user.profilePicture) deleteUpload(user.profilePicture);
     await req.models.User.deleteOne({ _id: userId });
+    for (const { eventId } of heldPlaces) {
+      const event = await req.models.Listing.findOne({ _id: eventId, listingType: "event" });
+      if (event) await fillFreedPlaces(req.models, event, req.tenant).catch(() => {});
+    }
     console.log(`Account deleted by its owner (tenant ${req.tenant?.slug})`);
     res.json({ success: true, message: "Your account has been deleted." });
   } catch (error) {

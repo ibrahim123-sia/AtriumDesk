@@ -26,9 +26,12 @@ const issues = await import("../controllers/issueController.js");
 const { submitAnswerFeedback } = await import("../controllers/chatController.js");
 const { exportMyData, deleteMyAccount } = await import("../controllers/accountDataController.js");
 const { guestTextChatController, clearGuestSession } = await import("../controllers/guestChatController.js");
-const { runAutoCloseResolvedIssues, runKnowledgeBaseRefresh } = await import("../services/scheduler.js");
+const { runAutoCloseResolvedIssues, runKnowledgeBaseRefresh, runSavedSearchAlerts } = await import("../services/scheduler.js");
+const savedSearches = await import("../controllers/savedSearchController.js");
 const { textMessageController } = await import("../controllers/messageController.js");
 const { updateTenantSettings } = await import("../controllers/tenantSettingsController.js");
+const rsvps = await import("../controllers/eventRsvpController.js");
+const { deleteListing } = await import("../controllers/adminListingController.js");
 
 const DB = "test_service_desk";
 const SLUG = "test-service-desk";
@@ -318,5 +321,118 @@ test("working hours and the knowledge-base refresh are validated and scheduled",
   const again = await runKnowledgeBaseRefresh();
   const mine = await getTenantModel().findById(tenantDoc._id);
   assert.equal(mine.contentSource.status, "done", `not re-run (${again})`);
+});
+
+test("RSVPs fill the places, then a waitlist that moves up when someone cancels", async () => {
+  const password = await bcrypt.hash("Secret123", 10);
+  const [a, b, c] = await Promise.all(
+    ["a", "b", "c"].map((n) =>
+      models.User.create({ name: `Attendee ${n.toUpperCase()}`, email: `rsvp-${n}@sdtest.invalid`, password, role: "student", isVerified: true })
+    )
+  );
+  const Event = models.Listing.discriminators.event;
+  const event = await Event.create({
+    listingType: "event", title: "Career Fair", organization: "Careers Office", date: new Date(Date.now() + 3 * 86400000),
+    status: "approved", source: "manual", rsvpEnabled: true, rsvpCapacity: 2,
+  });
+  const params = { id: String(event._id) };
+  const ra = await call(rsvps.rsvpToEvent, { user: a, params });
+  const rb = await call(rsvps.rsvpToEvent, { user: b, params });
+  const rc = await call(rsvps.rsvpToEvent, { user: c, params });
+  assert.equal(ra.body.rsvp.status, "going");
+  assert.match(ra.body.rsvp.code, /^[A-HJ-NP-Z2-9]{6}$/);
+  assert.equal(rb.body.rsvp.status, "going");
+  assert.equal(rc.body.rsvp.status, "waitlist");
+  assert.equal(rc.body.rsvp.code, null, "no door code while waitlisted");
+  const cView = await call(rsvps.getMyRsvp, { user: c, params });
+  assert.equal(cView.body.rsvp.waitlistPosition, 1);
+  assert.ok(await models.SavedListing.exists({ userId: a._id, listingId: event._id }), "going also turns the reminder on");
+
+  assert.equal((await call(rsvps.rsvpToEvent, { user: staffA, params })).statusCode, 403);
+
+  // Check-in at the door: by code, idempotent; a waitlisted RSVP can't.
+  const code = ra.body.rsvp.code;
+  const inA = await call(rsvps.checkInRsvp, { user: staffA, params, body: { code: code.toLowerCase() } });
+  assert.equal(inA.statusCode, 200);
+  assert.equal(inA.body.attendee.userName, "Attendee A");
+  assert.equal((await call(rsvps.checkInRsvp, { user: staffA, params, body: { code } })).body.already, true);
+  const cRsvp = await models.EventRsvp.findOne({ eventId: event._id, userId: c._id });
+  assert.equal((await call(rsvps.checkInRsvp, { user: staffA, params, body: { rsvpId: String(cRsvp._id) } })).statusCode, 400);
+  assert.equal((await call(rsvps.checkInRsvp, { user: staffA, params, body: { code: "ZZZZZZ" } })).statusCode, 404);
+
+  // B can't make it: C moves up and is told.
+  const cancel = await call(rsvps.cancelRsvp, { user: b, params });
+  assert.equal(cancel.statusCode, 200);
+  const promoted = await call(rsvps.getMyRsvp, { user: c, params });
+  assert.equal(promoted.body.rsvp.status, "going");
+  assert.match(promoted.body.rsvp.code, /^[A-HJ-NP-Z2-9]{6}$/);
+  await settle();
+  assert.ok(await models.Notification.exists({ userId: c._id, message: /place opened up/ }));
+
+  // B changes their mind: back of the queue (full again → waitlist).
+  const back = await call(rsvps.rsvpToEvent, { user: b, params });
+  assert.equal(back.body.rsvp.status, "waitlist");
+
+  const list = await call(rsvps.listEventRsvps, { user: staffA, params });
+  assert.equal(list.body.going, 2);
+  assert.equal(list.body.checkedIn, 1);
+  assert.equal(list.body.waitlist, 1);
+
+  // Deleting the event tells everyone holding a place, and drops the RSVPs.
+  const removed = await call(deleteListing, { user: staffA, params });
+  assert.equal(removed.statusCode, 200);
+  assert.equal(await models.EventRsvp.countDocuments({ eventId: event._id }), 0);
+  assert.equal(await models.Notification.countDocuments({ message: '"Career Fair" has been cancelled' }), 3);
+
+  const past = await Event.create({
+    listingType: "event", title: "Yesterday", organization: "X", date: new Date(Date.now() - 2 * 86400000),
+    status: "approved", source: "manual", rsvpEnabled: true,
+  });
+  assert.equal((await call(rsvps.rsvpToEvent, { user: a, params: { id: String(past._id) } })).statusCode, 400);
+});
+
+test("saved searches alert a student once about new matching listings", async () => {
+  const bad = await call(savedSearches.createSavedSearch, { user: student, body: { listingType: "event", filters: { search: "x" } } });
+  assert.equal(bad.statusCode, 400);
+  const empty = await call(savedSearches.createSavedSearch, { user: student, body: { listingType: "job", filters: { search: "  " } } });
+  assert.equal(empty.statusCode, 400);
+
+  const made = await call(savedSearches.createSavedSearch, {
+    user: student,
+    body: { listingType: "scholarship", filters: { search: "Erasmus", scope: "external", junk: "dropped" } },
+  });
+  assert.equal(made.statusCode, 201);
+  assert.deepEqual(made.body.search.filters, { search: "Erasmus", scope: "external" });
+  assert.equal(made.body.search.label, 'Scholarships: "Erasmus", study abroad');
+  const dup = await call(savedSearches.createSavedSearch, {
+    user: student,
+    body: { listingType: "scholarship", filters: { search: "Erasmus", scope: "external" } },
+  });
+  assert.equal(dup.body.already, true);
+
+  // Dated in 2020 so the run can't pick up (or move) real tenants' alerts.
+  await models.SavedSearch.updateOne({ _id: made.body.search._id }, { lastCheckedAt: new Date("2019-12-31T00:00:00Z") });
+  const Scholarship = models.Listing.discriminators.scholarship;
+  const base = { listingType: "scholarship", organization: "EU", status: "approved", source: "manual", scope: "external" };
+  await Scholarship.create({ ...base, title: "Erasmus Mundus Joint Masters", approvedAt: new Date("2020-01-01T10:00:00Z") });
+  await Scholarship.create({ ...base, title: "Chevening", approvedAt: new Date("2020-01-01T11:00:00Z") });
+  await Scholarship.create({ ...base, title: "Erasmus internal", scope: "internal", approvedAt: new Date("2020-01-01T12:00:00Z") });
+
+  const sent = await runSavedSearchAlerts(new Date("2020-01-02T00:00:00Z"));
+  assert.ok(sent >= 1);
+  await settle();
+  const notes = await models.Notification.find({ userId: student._id, message: /alert/ });
+  assert.equal(notes.length, 1);
+  assert.match(notes[0].message, /^1 new scholarship for your alert/);
+  assert.match(notes[0].link, /^\/scholarships\/[0-9a-f]{24}$/);
+
+  await runSavedSearchAlerts(new Date("2020-01-03T00:00:00Z"));
+  await settle();
+  assert.equal(await models.Notification.countDocuments({ userId: student._id, message: /alert/ }), 1, "nothing new, no second alert");
+
+  const list = await call(savedSearches.listSavedSearches, { user: student });
+  assert.equal(list.body.searches.length, 1);
+  assert.equal((await call(savedSearches.deleteSavedSearch, { user: staffA, params: { id: String(made.body.search._id) } })).statusCode, 404);
+  assert.equal((await call(savedSearches.deleteSavedSearch, { user: student, params: { id: String(made.body.search._id) } })).statusCode, 200);
 });
 

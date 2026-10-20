@@ -20,7 +20,7 @@ import fetch from "node-fetch";
 import { getTenantConnection } from "../config/tenantDb.js";
 import { getTenantModels } from "../models/registry.js";
 import { getTenantModel as getPlatformTenantModel } from "../models/platform/Tenant.js";
-import { notify, sendDigestEmail, safeHtml } from "./notify.js";
+import { notify, sendDigestEmail, safeHtml, joinHtml } from "./notify.js";
 import { evaluateHardRules, MatchState } from "./matching.js";
 import { buildStudentMatchProfile } from "./studentMatchProfile.js";
 import { findDueSources } from "./dueSources.js";
@@ -29,6 +29,7 @@ import { businessHoursBetween } from "./businessHours.js";
 import { removeListingEmbedding, notifySaversListingClosed } from "../controllers/adminSourceController.js";
 import { OPEN_APPLICATION_STATUSES } from "../models/SavedListing.js";
 import { startContentScrape, isScrapeRunning } from "../controllers/adminContentSourceController.js";
+import { filterFor } from "./listingFilters.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -436,6 +437,51 @@ export async function runKnowledgeBaseRefresh(now = new Date()) {
   return started;
 }
 
+/**
+ * Saved-search alerts: for each student's saved scholarship/job search, the
+ * listings approved since it was last checked that match it. One
+ * notification (and email) per search with new matches.
+ */
+export async function runSavedSearchAlerts(now = new Date()) {
+  let sent = 0;
+  await forEachActiveTenant(async (tenant, models) => {
+    const searches = await models.SavedSearch.find({});
+    for (const search of searches) {
+      if (!isTypeEnabled(tenant, search.listingType)) continue;
+      const since = search.lastCheckedAt || search.createdAt;
+      if (since >= now) continue;
+      const matchFilter = { ...filterFor(search.listingType, search.filters || {}), approvedAt: { $gt: since, $lte: now } };
+      const [fresh, total] = await Promise.all([
+        models.Listing.find(matchFilter).sort({ approvedAt: -1 }).limit(5).select("title organization listingType"),
+        models.Listing.countDocuments(matchFilter),
+      ]);
+      search.lastCheckedAt = now;
+      await search.save();
+      if (!total) continue;
+      const student = await models.User.findById(search.userId);
+      if (!student || student.isBlocked || student.profile?.notifications?.unsubscribeAll) continue;
+      const path = search.listingType === "job" ? "/jobs" : "/scholarships";
+      const noun = search.listingType === "job" ? "job" : "scholarship";
+      const clientBase = process.env.CLIENT_URL || "";
+      const items = fresh.map((l) => safeHtml`<li><a href="${`${clientBase}${path}/${l._id}`}">${l.title}</a> — ${l.organization || ""}</li>`);
+      await notify(models.Notification, student, {
+        type: "listing_digest",
+        message: `${total} new ${noun}${total === 1 ? "" : "s"} for your alert "${search.label}"`,
+        link: total === 1 ? `${path}/${fresh[0]._id}` : path,
+        emailSubject: `New ${noun}s for "${search.label}"`,
+        emailHeading: `New ${noun}s matching your alert`,
+        emailBody: safeHtml`<p>${search.label}</p><ul style="padding-left: 18px;">${joinHtml(items)}</ul>`,
+        branding: tenant.branding,
+        tenantSlug: tenant.slug,
+        includeUnsubscribeLink: true,
+      });
+      sent += 1;
+    }
+  });
+  if (sent) console.log(`Saved-search alerts: ${sent} sent`);
+  return sent;
+}
+
 // Hour of day (server local time — set TZ) each daily job runs at. Shared by
 // startScheduler()'s cron expressions and runScheduledJobs(), so in-process
 // cron and an external hourly trigger run them at the same time. Order
@@ -448,6 +494,7 @@ export const DAILY_JOB_HOURS = {
   autoCloseIssues: 4,
   kbRefresh: 5,
   digests: 6,
+  savedSearchAlerts: 7,
 };
 
 const DAILY_JOBS = {
@@ -457,6 +504,7 @@ const DAILY_JOBS = {
   autoCloseIssues: () => runAutoCloseResolvedIssues(),
   kbRefresh: () => runKnowledgeBaseRefresh(),
   digests: () => runDigestCheck(),
+  savedSearchAlerts: () => runSavedSearchAlerts(),
 };
 
 /** Names of the daily jobs scheduled for `hour` (0-23), in run order. */
@@ -554,6 +602,12 @@ export function startScheduler() {
   cron.schedule(`0 ${DAILY_JOB_HOURS.digests} * * *`, () => {
     runDigestCheck().catch((error) => {
       console.error("runDigestCheck failed:", error);
+    });
+  });
+
+  cron.schedule(`0 ${DAILY_JOB_HOURS.savedSearchAlerts} * * *`, () => {
+    runSavedSearchAlerts().catch((error) => {
+      console.error("runSavedSearchAlerts failed:", error);
     });
   });
 

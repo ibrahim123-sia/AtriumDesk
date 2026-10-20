@@ -20,6 +20,9 @@ class TrustedHtml {
   }
 }
 
+// Several safeHtml pieces (e.g. list items) as one.
+export const joinHtml = (parts) => new TrustedHtml(parts.map((p) => (p instanceof TrustedHtml ? p.html : escapeHtml(p))).join(""));
+
 // Multi-line user text: escaped, line breaks kept.
 export const multilineHtml = (value) => new TrustedHtml(escapeHtml(value).replace(/\r?\n/g, "<br/>"));
 
@@ -155,7 +158,7 @@ export const sendDigestEmail = async (NotificationModel, user, { items, branding
       subject: message,
       html: emailTemplate({
         heading: message,
-        body: new TrustedHtml(`<ul style="padding-left: 18px;">${rows.map((r) => r.html).join("")}</ul>`),
+        body: safeHtml`<ul style="padding-left: 18px;">${joinHtml(rows)}</ul>`,
         link: clientBase ? `${clientBase}/scholarships` : null,
         branding,
         unsubscribeLink: buildUnsubscribeLink(user._id, tenantSlug),

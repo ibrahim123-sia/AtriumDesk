@@ -1,4 +1,5 @@
 import express from "express";
+import { listEventRsvps, checkInRsvp } from "../controllers/eventRsvpController.js";
 import { protect } from "../middlewares/auth.js";
 import { requireRole } from "../middlewares/requireRole.js";
 import {
@@ -97,6 +98,8 @@ router.patch("/failed-questions/resolve", requireStaffPermission("failedQuestion
 router.get("/listings", requireStaffPermission("content"), listListings);
 router.post("/listings", requireStaffPermission("content"), createListing);
 router.get("/listings/:id", requireStaffPermission("content"), getListing);
+router.get("/listings/:id/rsvps", requireStaffPermission("content"), listEventRsvps);
+router.post("/listings/:id/rsvps/check-in", requireStaffPermission("content"), checkInRsvp);
 router.patch("/listings/:id", requireStaffPermission("content"), updateListing);
 router.patch("/listings/:id/approve", requireStaffPermission("content"), approveListing);
 router.patch("/listings/:id/reject", requireStaffPermission("content"), rejectListing);

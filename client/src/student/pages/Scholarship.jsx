@@ -10,6 +10,7 @@ import {
 } from "../../redux/slices/scholarshipSlice";
 import { fetchSaved, saveListing, unsaveListing } from "../../redux/slices/savedSlice";
 import MatchedListingCard from "../components/MatchedListingCard";
+import SaveSearchButton from "../components/SaveSearchButton";
 import { getPalette } from "../../administrator/utils/palette";
 
 // What scholarship matching reads from the profile, and what's missing.
@@ -229,16 +230,23 @@ const Scholarship = () => {
             )
           ) : (
             <>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: C.muted }} />
-                <input
-                  type="text"
-                  value={externalSearch}
-                  onChange={(e) => setExternalSearch(e.target.value)}
-                  placeholder="Search by country, university, or program..."
-                  aria-label="Search study-abroad scholarships"
-                  className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border focus:outline-none"
-                  style={{ backgroundColor: C.surface, borderColor: C.border, color: C.text }}
+              <div className="flex flex-wrap gap-3">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: C.muted }} />
+                  <input
+                    type="text"
+                    value={externalSearch}
+                    onChange={(e) => setExternalSearch(e.target.value)}
+                    placeholder="Search by country, university, or program..."
+                    aria-label="Search study-abroad scholarships"
+                    className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border focus:outline-none"
+                    style={{ backgroundColor: C.surface, borderColor: C.border, color: C.text }}
+                  />
+                </div>
+                <SaveSearchButton
+                  listingType="scholarship"
+                  filters={{ search: externalSearch.trim() || undefined, scope: "external" }}
+                  C={C}
                 />
               </div>
               {externalLoading && scholarships.length === 0 ? (

@@ -112,6 +112,10 @@ const eventDiscriminatorSchema = new mongoose.Schema({
   date: { type: Date, required: true },
   location: { type: String, trim: true, default: "" },
   department: { type: mongoose.Schema.Types.ObjectId, ref: "Department", default: null },
+  // Students RSVP for a place (controllers/eventRsvpController.js); a full
+  // event puts new RSVPs on a waitlist. Null capacity = no limit.
+  rsvpEnabled: { type: Boolean, default: false },
+  rsvpCapacity: { type: Number, default: null, min: 1 },
 });
 
 export const getScholarshipModel = (connection) => {

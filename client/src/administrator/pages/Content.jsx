@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import EventAttendees from "../components/EventAttendees";
 import { useDispatch, useSelector } from "react-redux";
 import {
   GraduationCap,
@@ -88,6 +89,8 @@ const FIELD_CONFIGS = {
     { key: "location", label: "Location" },
     { key: "officialLink", label: "Official link" },
     { key: "description", label: "Description", type: "textarea" },
+    { key: "rsvpEnabled", label: "Take RSVPs (students get a check-in code)", type: "checkbox" },
+    { key: "rsvpCapacity", label: "Places (empty = no limit; extra RSVPs join a waitlist)", type: "number" },
   ],
 };
 
@@ -382,6 +385,7 @@ const ListingsTab = ({ type }) => {
               </div>
             )}
             {fields.map(renderField)}
+            {!addOpen && type === "event" && drawerListing?.rsvpEnabled && <EventAttendees eventId={drawerListing._id} C={C} />}
             {!addOpen && drawerListing?.mergedFrom?.length > 0 && (
               <div className="space-y-2 pt-2 border-t" style={{ borderColor: C.border }}>
                 <p className="text-xs font-semibold uppercase" style={{ color: C.muted }}>

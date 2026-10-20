@@ -176,6 +176,16 @@ export const deleteListing = async (req, res) => {
     const listing = await req.models.Listing.findByIdAndDelete(req.params.id);
     if (!listing) return res.status(404).json({ success: false, message: "Listing not found" });
     await removeListingEmbedding(req.tenant?.slug, req.params.id);
+    if (listing.listingType === "event") {
+      // Anyone holding a place for an upcoming event is told it's off.
+      const holders = await req.models.EventRsvp.find({ eventId: listing._id, status: { $in: ["going", "waitlist"] } }).select("userId");
+      if (holders.length && listing.date >= startOfToday()) {
+        await req.models.Notification.insertMany(
+          holders.map((h) => ({ userId: h.userId, type: "listing_saved_change", message: `"${listing.title}" has been cancelled`, link: "/events" }))
+        ).catch((error) => console.error("deleteListing: RSVP notice failed:", error.message));
+      }
+      await req.models.EventRsvp.deleteMany({ eventId: listing._id });
+    }
     res.json({ success: true, message: "Listing deleted" });
   } catch (error) {
     console.error("deleteListing error:", error);

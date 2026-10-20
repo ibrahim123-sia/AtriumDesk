@@ -5,6 +5,7 @@ import { Briefcase, Search, MapPin, GraduationCap, Sparkles, Link2, UserCog } fr
 import { fetchJobs, fetchMatchedJobs } from "../../redux/slices/jobSlice";
 import { fetchSaved, saveListing, unsaveListing } from "../../redux/slices/savedSlice";
 import MatchedListingCard from "../components/MatchedListingCard";
+import SaveSearchButton from "../components/SaveSearchButton";
 import { getPalette } from "../../administrator/utils/palette";
 
 // Rev 5 §6.1/§6.3 — replaces the retired Apify-dependent Job.jsx. Sourced
@@ -182,6 +183,11 @@ const Jobs = () => {
                 <input type="checkbox" checked={freshGradOnly} onChange={(e) => setFreshGradOnly(e.target.checked)} />
                 Fresh-grad friendly only
               </label>
+              <SaveSearchButton
+                listingType="job"
+                filters={{ search: search.trim() || undefined, workMode: workMode || undefined, isFreshGradFriendly: freshGradOnly || undefined }}
+                C={C}
+              />
             </div>
 
             {loading && jobs.length === 0 ? (

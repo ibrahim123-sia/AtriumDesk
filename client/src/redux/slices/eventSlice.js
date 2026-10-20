@@ -52,16 +52,46 @@ export const fetchMatchedEvents = createAsyncThunk(
   }
 );
 
+// RSVP: the student's place (or waitlist spot) and the event's counts.
+export const fetchMyRsvp = createAsyncThunk("event/fetchRsvp", async (id, { getState }) => {
+  try {
+    const { data } = await axios.get(`/api/events/${id}/rsvp`, authHeader(getState));
+    return data;
+  } catch (error) {
+    return { success: false, message: errorMessage(error, "Failed to load your RSVP") };
+  }
+});
+
+export const rsvpToEvent = createAsyncThunk("event/rsvp", async (id, { getState }) => {
+  try {
+    const { data } = await axios.post(`/api/events/${id}/rsvp`, {}, authHeader(getState));
+    return data;
+  } catch (error) {
+    return { success: false, message: errorMessage(error, "Couldn't RSVP") };
+  }
+});
+
+export const cancelEventRsvp = createAsyncThunk("event/cancelRsvp", async (id, { getState }) => {
+  try {
+    const { data } = await axios.delete(`/api/events/${id}/rsvp`, authHeader(getState));
+    return data;
+  } catch (error) {
+    return { success: false, message: errorMessage(error, "Couldn't cancel") };
+  }
+});
+
 const eventSlice = createSlice({
   name: "event",
   initialState: {
     events: [], total: 0, selected: null, loading: false, detailLoading: false, detailError: null,
     matched: [], matchedLoading: false, matchedHasSignals: true,
+    rsvp: null,
   },
   reducers: {
     clearSelectedEvent(state) {
       state.selected = null;
       state.detailError = null;
+      state.rsvp = null;
     },
   },
   extraReducers: (builder) => {
@@ -93,7 +123,16 @@ const eventSlice = createSlice({
           state.matchedHasSignals = action.payload.hasSignals !== false;
         }
       })
-      .addCase(fetchMatchedEvents.rejected, (state) => { state.matchedLoading = false; });
+      .addCase(fetchMatchedEvents.rejected, (state) => { state.matchedLoading = false; })
+      .addCase(fetchMyRsvp.fulfilled, (state, action) => {
+        if (action.payload.success) state.rsvp = action.payload.rsvp;
+      })
+      .addCase(rsvpToEvent.fulfilled, (state, action) => {
+        if (action.payload.success) state.rsvp = action.payload.rsvp;
+      })
+      .addCase(cancelEventRsvp.fulfilled, (state, action) => {
+        if (action.payload.success) state.rsvp = action.payload.rsvp;
+      });
   },
 });
 

@@ -6,9 +6,9 @@
  */
 
 import { evaluateHardRules, MatchState } from "../services/matching.js";
+import { scholarshipFilter } from "../services/listingFilters.js";
 import { buildStudentMatchProfile } from "../services/studentMatchProfile.js";
 import { getOrCreateExplanation } from "../services/matchExplanations.js";
-import { escapeRegex } from "../services/escapeRegex.js";
 
 // §8 Layer 3: "computed lazily, only for the top ~10 results a student
 // actually sees" — bounds LLM cost regardless of how many listings pass
@@ -58,20 +58,8 @@ export const getMatchedScholarships = async (req, res) => {
 
 export const listScholarships = async (req, res) => {
   try {
-    const { country, fundingType, degreeLevel, scope, search, limit = 25, offset = 0 } = req.query;
-    const filter = { listingType: "scholarship", status: "approved" };
-    // "internal" = the university's own awards and concessions.
-    if (scope === "internal" || scope === "external") filter.scope = scope;
-    if (country) filter.country = country;
-    if (fundingType) filter.fundingType = fundingType;
-    if (degreeLevel) filter.degreeLevel = degreeLevel;
-    if (search) {
-      filter.$or = [
-        { title: { $regex: escapeRegex(search), $options: "i" } },
-        { organization: { $regex: escapeRegex(search), $options: "i" } },
-        { description: { $regex: escapeRegex(search), $options: "i" } },
-      ];
-    }
+    const { limit = 25, offset = 0 } = req.query;
+    const filter = scholarshipFilter(req.query);
     const [scholarships, total] = await Promise.all([
       req.models.Listing.find(filter)
         .sort({ createdAt: -1 })

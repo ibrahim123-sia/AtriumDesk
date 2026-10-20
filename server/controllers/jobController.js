@@ -4,10 +4,10 @@
  */
 
 import { evaluateHardRules, MatchState } from "../services/matching.js";
+import { jobFilter } from "../services/listingFilters.js";
 import { buildStudentMatchProfile } from "../services/studentMatchProfile.js";
 import { getOrCreateExplanation } from "../services/matchExplanations.js";
 import { computeSkillGaps } from "../services/skillGap.js";
-import { escapeRegex } from "../services/escapeRegex.js";
 
 const EXPLAIN_TOP_N = 10;
 
@@ -61,19 +61,8 @@ export const getMatchedJobs = async (req, res) => {
 
 export const listJobs = async (req, res) => {
   try {
-    const { workMode, location, experienceLevel, isFreshGradFriendly, search, limit = 25, offset = 0 } = req.query;
-    const filter = { listingType: "job", status: "approved" };
-    if (workMode) filter.workMode = workMode;
-    if (location) filter.location = { $regex: escapeRegex(location), $options: "i" };
-    if (experienceLevel) filter.experienceLevel = { $regex: escapeRegex(experienceLevel), $options: "i" };
-    if (isFreshGradFriendly !== undefined) filter.isFreshGradFriendly = isFreshGradFriendly === "true";
-    if (search) {
-      filter.$or = [
-        { title: { $regex: escapeRegex(search), $options: "i" } },
-        { organization: { $regex: escapeRegex(search), $options: "i" } },
-        { description: { $regex: escapeRegex(search), $options: "i" } },
-      ];
-    }
+    const { limit = 25, offset = 0 } = req.query;
+    const filter = jobFilter(req.query);
     const [jobs, total] = await Promise.all([
       req.models.Listing.find(filter)
         .sort({ createdAt: -1 })

@@ -23,6 +23,7 @@ import toast from "react-hot-toast";
 import { updateProfile, updateProfileDetails, changePassword, parseCv } from "../redux/slices/authSlice";
 import { getPalette } from "../administrator/utils/palette";
 import YourDataCard from "./YourDataCard";
+import SearchAlertsCard from "./SearchAlertsCard";
 
 const FIELD_LABEL_CLASS = "text-xs font-semibold uppercase block mb-1";
 const FIELD_HINT_CLASS = "text-xs mt-1";
@@ -948,6 +949,7 @@ const Profile = () => {
           </div>
         </form>
 
+        {isStudent && <SearchAlertsCard C={C} />}
         {isStudent && <YourDataCard C={C} />}
       </div>
     </div>
