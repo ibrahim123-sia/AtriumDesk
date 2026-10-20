@@ -22,20 +22,22 @@ AtriumDesk is a full-stack AI-powered platform that consolidates university stud
 |--------|--------|-------------|
 | **Guest Page** | ✅ | Public admissions assistant for applicants: chat, the university's own scholarships and campus events. Each university has its own link (`/?u=<id>`) and a one-tag **website widget** (`/widget.js`) |
 | **Auth** | ✅ | Register / login with a university email, OTP verification, password recovery |
-| **AI Chatbot** | ✅ | Answers university queries via RAG over the tenant's own website; source links under confident answers; 👍/👎 on every answer (a 👎 lands in the failed-question log); one-click "file a query" handoff with the transcript; voice input; profanity filter with admin flagging |
+| **AI Chatbot** | ✅ | Answers university queries via RAG over the tenant's own website; source links under confident answers; 👍/👎 on every answer (a 👎 lands in the failed-question log); one-click "file a query" handoff with the transcript; starter questions the university chooses; rename / clear conversations; voice input; profanity filter with admin flagging. A message suggesting self-harm gets a fixed support reply with the university's own counselling contacts, never a model answer |
 | **Issue Tracker** | ✅ | Submit and track support requests with attachments; the form offers an existing answer before you file; replying to a resolved issue reopens it; rejection reasons shown; resolved issues auto-close after 7 days; in-app bell + email notifications |
-| **Job Portal** | ✅ | Scraped + manually-entered listings, hard-rule + embedding-based matching, skill-gap analysis against an uploaded CV |
-| **Scholarship Portal** | ✅ | Scraped + manually-entered listings, CGPA-aware matching, cached LLM match explanations |
-| **Events** | ✅ | Manual-entry campus events (no scrapable source exists) with save/reminder support, calendar (.ics / Google) and WhatsApp sharing |
+| **Job Portal** | ✅ | Scraped + manually-entered listings, hard-rule + embedding-based matching, skill-gap analysis against an uploaded CV; **"Alert me"** saves a search and emails new matches |
+| **Scholarship Portal** | ✅ | Scraped + manually-entered listings, CGPA-aware matching, cached LLM match explanations; **"Alert me"** on the study-abroad search |
+| **Events** | ✅ | Manual-entry campus events with save/reminder support, calendar (.ics / Google) and WhatsApp sharing; **RSVP** with limited places, a waitlist that moves up automatically, and a door check-in code |
+| **Office queue** | ✅ | Join an office's walk-in line (Finance, Registrar…) from the phone: ticket number, people ahead, rough wait, and a notification when you're next and when it's your turn |
 | **Saved & Applications** | ✅ | Saved scholarships/jobs/events with an application tracker (preparing → applied → interviewing → offer), notes, documents checklist, deadline reminders |
-| **Profile Page** | ✅ | Unified academic/career/study-abroad/events profile, auto-filled from CV parsing or a tenant's student-email pattern; digest settings; download my data / delete my account |
+| **Profile Page** | ✅ | Unified academic/career/study-abroad/events profile (incl. department), auto-filled from CV parsing or a tenant's student-email pattern; digest settings; search alerts; **browser notifications** per device; download my data / delete my account |
 
 ### 🏢 Staff Portal (Department-scoped)
 | Module | Status | Description |
 |--------|--------|-------------|
 | **Dashboard** | ✅ | Open / In Progress / Resolved-this-week cards, 7-day trend chart, avg first-response time, recent issues, your own reply count |
 | **Department Inbox** | ✅ | Only your department's issues; per-status counts, escalated-only and assigned-to-me filters; 20s polling |
-| **Issue Detail** | ✅ | Full thread with student info and attachments; assign/reassign; **internal notes** only staff see; **transfer** to the right department; department **saved replies** |
+| **Issue Detail** | ✅ | Full thread with student info and attachments; assign/reassign; **internal notes** only staff see; **transfer** to the right department; department **saved replies**; **"Draft a reply"** from the knowledge base (edited before sending) |
+| **Walk-in Queue** | ✅ | Open/close the department's queue, call the next student to your counter (they're notified), mark served / no-show, today's served count and average wait |
 | **Status Management** | ✅ | Update status (Pending → In Progress → Resolved → Closed); student notified by bell + email |
 | **Reply System** | ✅ | Threaded replies to students; notification fires on every reply |
 
@@ -45,14 +47,14 @@ AtriumDesk is a full-stack AI-powered platform that consolidates university stud
 | **Dashboard** | ✅ | Stat cards (students/staff/admins/departments/issues/chats/flagged) + 7-day issue trend + recent signups + **assistant card** (questions answered, confident share, helpful rate, chat-to-ticket handoffs, answers given on the issue form, most-asked gaps) |
 | **Users** | ✅ | List students with search and filters (blocked / flagged); detail drawer with issues, chats, flags; block/unblock with confirm |
 | **Staff** | ✅ | Create staff with an auto-generated address on the university's staff email pattern + 12-char password (shown once + emailed); filter by department; deactivate |
-| **Departments** | ✅ | Create / edit / soft-deactivate; first-reply target (SLA hours) and who escalations go to |
+| **Departments** | ✅ | Create / edit / soft-deactivate; first-reply target (SLA hours, optionally counted in working hours only) and who escalations go to; turn on the walk-in queue |
 | **Failed Questions** | ✅ | Questions the bot couldn't answer well (low confidence or rated 👎), grouped with counts and the answer given — answer them straight into the knowledge base |
 | **Query** | ✅ | Cross-department issue analytics — top categories, by-department, avg resolution time, filterable table, read-only detail |
 | **Data (Vector DB)** | ✅ | Direct-to-Python CRUD on the chatbot knowledge base; edit/add chunks; upload PDF / DOCX / TXT with auto chunking + embedding |
 | **Logs & Activity** | ✅ | Three tabs: admin action audit (with redacted payload), login events (success + failures), chat browser with flagged-student filter |
-| **Content Management** | ✅ | Manage scholarship/job/event sources, review scraped listings, self-service chatbot knowledge-base website scraping |
+| **Content Management** | ✅ | Manage scholarship/job/event sources, review scraped listings, event RSVPs (attendees + check-in), self-service chatbot knowledge-base website scraping with a weekly/fortnightly/monthly refresh |
 | **System Health** | ✅ | One-screen manual health check pinging MongoDB, ChromaDB, and the active LLM provider — meant to be run right before a demo/exam |
-| **Settings** | ✅ | Branding (name, logo, colour), email domains and patterns, OTP email account, retrieval tuning, plus the guest link and website-widget snippet to share |
+| **Settings** | ✅ | Branding (name, logo, colour), email domains and patterns, OTP email account, retrieval tuning, starter questions, counselling contacts for the wellbeing reply, working hours, plus the guest link and website-widget snippet to share |
 
 ### 🧑‍✈️ Super Admin (Platform)
 | Module | Status | Description |
@@ -71,7 +73,7 @@ server/    →  Node.js / Express + MongoDB / Mongoose — one PlatformDB (tenan
 python/    →  FastAPI + ChromaDB + sentence-transformers — one Chroma collection per tenant
 ```
 
-**Key libraries:** `recharts` (admin/staff dashboards), `react-markdown`, `react-hot-toast`, `lucide-react`, `multer`, `nodemailer` (any SMTP relay — Gmail, Brevo, Resend…), `express-rate-limit`, `pyjwt`, `pypdf`, `python-docx` (chunking is a hand-rolled heading-anchored packer in `scraper.py`, not a third-party splitter).
+**Key libraries:** `recharts` (admin/staff dashboards), `react-markdown`, `react-hot-toast`, `lucide-react`, `multer`, `nodemailer` (any SMTP relay — Gmail, Brevo, Resend…), `web-push` (browser notifications), `express-rate-limit`, `pyjwt`, `pypdf`, `python-docx` (chunking is a hand-rolled heading-anchored packer in `scraper.py`, not a third-party splitter).
 
 ---
 
@@ -114,6 +116,8 @@ DEFAULT_TENANT_SLUG=maju                 # which tenant guest/legacy traffic res
 EMAIL_USER / EMAIL_PASS                  # platform-default Gmail SMTP fallback
 SMTP_HOST / SMTP_PORT / SMTP_SECURE      # …or any other SMTP relay (e.g. smtp-relay.brevo.com:587)
 SMTP_USER / SMTP_PASS / EMAIL_FROM       # relay login + sender address (a tenant's own SMTP in Settings wins)
+VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY     # browser notifications — `npx web-push generate-vapid-keys`, keep them
+VAPID_SUBJECT=mailto:support@example.edu # (empty = push off; email + in-app still work)
 PYTHON_BACKEND_URL=http://localhost:8000
 ```
 
@@ -169,8 +173,10 @@ Log in as the admin you seeded, create departments + staff from the admin panel,
 ### Tests
 
 ```bash
-cd server && npm test                  # node --test — matching, CGPA conversion, URL/SSRF guard, scheduler,
-                                       # skill gaps, department suggestion, file store, tenant isolation
+cd server && npm test                  # node --test (113 tests) — matching, CGPA conversion, URL/SSRF guard,
+                                       # scheduler, working hours, wellbeing, skill gaps, department suggestion,
+                                       # file store, tenant isolation, and service-desk integration tests
+                                       # (issues, guests, data rights, RSVPs, alerts, push, walk-in queue)
 cd client && npm run lint && npm run build
 cd python/eval && python eval.py       # golden-set RAG evaluation against a running AI service (needs INTERNAL_SECRET)
 ```
@@ -312,7 +318,9 @@ AtriumDesk/
 ### Known issues
 
 - Guests asking about the university's scholarships in some wordings get "no information" while students get an answer (golden case `guest-scholarships-coverage`); a guest-scope prompt fix is pending measurement.
-- The AI service's failover needs valid keys for every provider in `CLOUD_LLM_ORDER`; a free Groq key allows 200,000 tokens a day.
+- The AI service's failover needs valid keys for every provider in `CLOUD_LLM_ORDER`; a free Groq key allows 200,000 tokens a day. Reply drafts and chat answers can take up to a minute when the provider is rate-limiting.
+- Browser notifications need `VAPID_*` keys in the deployment's secrets; changing them later ends every existing subscription.
+- Event check-in codes are typed by the person at the door (no QR scanner yet).
 
 ---
 

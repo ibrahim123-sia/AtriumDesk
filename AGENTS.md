@@ -23,7 +23,9 @@ The five parts below were written in this order: **Part A (Rev 5) → Part B (Re
 | Answer feedback | Part E §E.4 (extends Part A §4.3) | 👍/👎 on every answer; 👎 adds the question to the failed-question log with `reason: "unhelpful"` and the answer given. |
 | Feature set (Scholarships/Jobs/Events/matching/etc.) | Part A, in full | Unchanged by the SaaS pivot — every module in Part A still applies, now running inside one tenant's database. |
 | Build order | Part D §9 (supersedes Part A §12 and Part C §7 individually) | T0/T1 precede Part A's Phase 0; Part A's phases then proceed unchanged; T2/T3 run later. |
-| Open items requiring verification | Part D §10 (merges Part A §16 with new items); Part E §E.6 | Part D §10 for planning items; Part E §E.6 for what the October 2026 review left open. |
+| Open items requiring verification | Part D §10 (merges Part A §16 with new items); Part E §E.8 | Part D §10 for planning items; Part E §E.8 for what is still open after the October 2026 work. |
+| Notifications channels | Part E §E.7 (extends Part A §10) | In-app + email as before, plus browser push (web push) to devices the person turned it on for; every `notify()` call pushes. |
+| Walk-in queue, event RSVP, saved searches | Part E §E.7 | Built: department walk-in queue with call-next; event RSVPs with capacity, waitlist and door codes; saved-search alerts. |
 | Scope cut for the SaaS layer | Part D §6 | Must/Nice/Defer — see table there before adding SaaS-layer work. |
 
 ---
@@ -2229,7 +2231,7 @@ Merges Rev 5 §16's original list with this document's new items. Nothing here i
 
 # PART E — Rev 8: Review of the built system (October 2026)
 
-*Written after an end-to-end review of the running code on 2026-10-20 (branch `improve/review-2026-10`, six commits). Unlike Parts A–D this part describes decisions already implemented. The long-form write-up, with research, verification and a feature guide, is `doc/AtriumDesk_Review_2026-10.pdf` (local, like `doc/Guide.pdf`).*
+*Written after an end-to-end review of the running code on 2026-10-20 (branch `improve/review-2026-10`); §E.6–§E.8 were added when the follow-up features were built the same week. Unlike Parts A–D this part describes decisions already implemented. The long-form write-up, with research, verification and a feature guide, is `doc/AtriumDesk_Review_2026-10.pdf` (local, like `doc/Guide.pdf`).*
 
 ## Rev8 §E.1 Scope
 
@@ -2262,7 +2264,7 @@ The review stayed inside AtriumDesk's own domain — the AI student assistant, t
 | Website widget | `client/public/widget.js` adds a button that opens `/embed` in an iframe; Admin → Settings shows the link and snippet | `client/src/administrator/components/ShareAssistant.jsx` |
 | Framing | `frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN` for the app, removed for `/embed` | `client/public/_headers` |
 | Knowledge base rebuild | Chunks not created by the website scrape (ids not starting `chunk_`) are kept across a rebuild | `python/database.py` |
-| AI-service calls | node-fetch v3 ignores `timeout`; every call uses `AbortSignal.timeout(...)` (chat 60 s, issue suggestion 25 s, scrape 90 s) | server controllers/services |
+| AI-service calls | node-fetch v3 ignores `timeout`; every call uses `AbortSignal.timeout(...)` (chat 120 s — a rate-limited provider can take a minute; reply drafts 90 s; issue suggestion 25 s; scrape 90 s) | server controllers/services |
 
 ## Rev8 §E.4 Help desk
 
@@ -2284,17 +2286,41 @@ The review stayed inside AtriumDesk's own domain — the AI student assistant, t
 - Signed-in users opening `/` go to their role's home; `/login` redirects signed-in users.
 - The tenant logo (or initials) replaces the hardcoded "UA"/"AD" marks; staff and admin navbars carry the notification bell.
 
-## Rev8 §E.6 Open after the review
+## Rev8 §E.6 Built after the review — assistant and help desk
+
+| Area | Decision (implemented) | Where |
+|---|---|---|
+| Starter questions | `Tenant.branding.guestStarterQuestions` / `studentStarterQuestions` (up to 6 each), edited in Admin → Settings; built-in defaults when empty | `tenantSettingsController.js`, `client/src/utils/starterQuestions.js` |
+| Wellbeing | A message suggesting self-harm (English, Roman Urdu, Urdu patterns) gets a fixed, human-written reply with the university's own counselling contacts (`branding.wellbeingMessage`), never a model answer. Stored with `message.safety = "wellbeing"`; not cached, rated or logged as a failed question; the assistant card shows only how often it happened. No helpline numbers are hardcoded | `server/services/wellbeing.js`, `messageController.js`, `guestChatController.js` |
+| Chat housekeeping | Rename (≤80 chars) and clear-conversation in the sidebar/chat; delete icon visible on touch screens | `chatController.js`, `Sidebar.jsx`, `ChatPage.jsx` |
+| Profile department | Students pick their department (`core.departmentId`, active departments only) | `userController.js` (`updateProfileDetails`) |
+| Reply drafts | Staff press "Draft a reply": `POST /api/issue/department/:id/draft-reply` → Python `/issues/draft-reply` (`python/reply_draft.py`) drafts from the knowledge base only, unknown details as `[placeholders]`, under 150 words; staff edit before sending; 30 per 15 min per staff member; logged as `AiUsageLog.endpoint = "reply_draft"` | `issueController.js` (`draftStaffReply`) |
+| Working-hours SLA | `Tenant.businessHours {enabled, days, startHour, endHour, timezone}`; when enabled, first-reply targets count working hours only | `server/services/businessHours.js`, `scheduler.js` (`isSlaBreached`) |
+| Knowledge-base refresh | `Tenant.contentSource.refreshDays` (0 / 7 / 14 / 30) re-runs the website scrape; hand-written answers are kept | `adminContentSourceController.js` (`startContentScrape`), `scheduler.js` (`runKnowledgeBaseRefresh`) |
+| Admin issue view | The administrator's issue drawer shows internal notes | `client/src/administrator/pages/Query.jsx` |
+
+## Rev8 §E.7 Built after the review — events, alerts, push, walk-ins
+
+| Area | Decision (implemented) | Where |
+|---|---|---|
+| Event RSVPs | An event may take RSVPs (`rsvpEnabled`, optional `rsvpCapacity`). Places go by RSVP order; beyond capacity is a waitlist with position. A place carries a 6-character door code (no 0/O/1/I). Cancelling promotes the next person, who is notified. Going also saves the event (day-before reminder). Admins/content staff see attendees and check in by code or click. Deleting an upcoming event tells everyone holding a place | `server/models/EventRsvp.js`, `server/controllers/eventRsvpController.js`, `client/src/administrator/components/EventAttendees.jsx`, `EventDetail.jsx` |
+| Saved-search alerts | "Alert me about new matches" on Jobs and study-abroad Scholarships saves the filters (`SavedSearch`, up to 10). The daily job emails/notifies when listings approved since the last check match. List endpoints and alerts share one filter builder | `server/services/listingFilters.js`, `savedSearchController.js`, `scheduler.js` (`runSavedSearchAlerts`), `client/src/profile/SearchAlertsCard.jsx` |
+| Browser push | `notify()` (and the digest) also pushes to the person's `PushSubscription`s via web-push; VAPID keys from `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` (push off when unset). Only real push-service endpoints are accepted — https, default port, Google (`*.googleapis.com`, `*.google.com`), Mozilla, Microsoft, Apple — because the server POSTs to them. 404/410 subscriptions are removed; at most 10 devices per person; a device belongs to whoever turned it on last; logging out switches it off. The service worker shows the notification and opens only the app's own pages | `server/services/push.js`, `pushController.js`, `client/public/sw.js`, `client/src/utils/push.js`, `PushNotificationsCard.jsx` |
+| Walk-in queue | Administrator turns it on per department (`walkInEnabled`, `walkInNote`); staff open/close it (`walkInOpen`). Students join from the phone (one queue at a time) and get a ticket like `FIN-007`, people ahead and a wait estimate (today's average time per student, 5 min default). "Call next" is one atomic update; the called student and the new first in line are notified (`Notification.type = "queue_update"`). Numbers restart daily in the tenant's time zone | `server/models/QueueTicket.js`, `queueController.js`, `services/dates.js` (`localDayKey`), `client/src/student/pages/Queue.jsx`, `client/src/staff/pages/StaffQueue.jsx` |
+| Data rights | The export includes RSVPs, search alerts and queue visits; deletion removes RSVPs (places go to the waitlist), alerts and push devices, and anonymises queue tickets | `accountDataController.js` |
+
+Daily jobs (server local time, `TZ`): chroma backup 01:00 · deadline reminders 02:00 · expired listings 03:00 · auto-close issues 04:00 · knowledge-base refresh 05:00 · digests 06:00 · saved-search alerts 07:00 (`DAILY_JOB_HOURS` in `scheduler.js`; the same table drives `POST /api/admin/internal/run-jobs` on Cloudflare).
+
+Tests: `cd server && node --test` — 113 tests, including 16 integration tests in `server/test/serviceDesk.test.js` (throwaway tenant DB) for notes, reopen, transfer, auto-close, feedback, guest sessions, export/deletion, wellbeing, drafts, working hours, KB refresh, RSVPs, saved searches, push and the walk-in queue.
+
+## Rev8 §E.8 Still open
 
 | # | Item | Status |
 |---|---|---|
-| 1 | Guests asking "What scholarships does the university offer and how much do they cover?" get the no-information reply (students get the answer) | Open — a prompt clarification of the guest scope (the university's own scholarships, fee waivers and financial aid; "the university" = this tenant) is ready but unmeasured; golden case `guest-scholarships-coverage` fails until fixed |
-| 2 | LLM failover: Groq key #2 and Gemini key invalid; Groq key #1 hits 200k tokens/day | Open — needs working keys or a paid tier (relates to Part D §10 item 3 and 8) |
-| 3 | Tenant SMTP credentials rejected (535) | Open — configure a working account or `SMTP_*` relay |
-| 4 | Students can't choose a department in the profile | Open (code) |
-| 5 | Chat rename / clear have server routes but no UI; chat delete icon is hover-only | Open (code) |
-| 6 | Admin issue view doesn't show internal notes | Open (code) |
-| 7 | New features verified by review scripts, not by tests in the repository | Open (code) |
-| 8 | Guest answers served from the cache aren't counted on the assistant card | Open (minor) |
-| 9 | Next candidates: AI-drafted staff replies, business-hours SLA, office hours / walk-in queue, event RSVP + QR check-in, web push, saved searches, scheduled knowledge-base refresh, configurable starter questions, crisis escalation with per-tenant helplines | Not started |
-
+| 1 | Guests asking "What scholarships does the university offer and how much do they cover?" get the no-information reply (students get the answer) | Open — a prompt clarification of the guest scope is ready but unmeasured; golden case `guest-scholarships-coverage` fails until fixed. Ship only after a golden-set run with a working LLM budget |
+| 2 | LLM failover: Groq key #2 and Gemini key invalid; Groq key #1 hits 200k tokens/day | Open — needs working keys or a paid tier (Part D §10 items 3 and 8) |
+| 3 | Tenant SMTP credentials rejected (535) | Open — configure a working account or an `SMTP_*` relay |
+| 4 | Production push keys | Set `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` as deployment secrets once and keep them — new keys end every existing browser subscription |
+| 5 | Cloudflare deploy | Built and verified locally; the real deploy waits on the owner's Cloudflare login |
+| 6 | Branch `improve/review-2026-10` | Pushed, not merged into `main` |
+| 7 | Possible next steps | QR scanning for door codes (codes are typed today), a public "now serving" screen for walk-in queues, SSO and LMS/SIS connectors (the competitive gaps from September), push for bulk notices that bypass `notify()` (e.g. "listing closed" notices) |

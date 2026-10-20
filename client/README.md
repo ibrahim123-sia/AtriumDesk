@@ -24,8 +24,8 @@ npm run preview   # serve the build locally
 | Who | Paths |
 |---|---|
 | Guest (public) | `/` (admissions assistant — signed-in users are sent to their own home), `/?u=<university>` (a specific university's assistant, remembered), `/embed` (compact chat for the website widget), `/guest/scholarships`, `/guest/activities/:slug`, `/login`, `/register`, `/unsubscribe`, `/privacy`, `/terms` |
-| Student | `/chat`, `/scholarships(/:id)`, `/jobs(/:id)`, `/events(/:id)`, `/saved` (saved items + application tracker), `/issues`, `/issues/new`, `/issues/:id`, `/profile` |
-| Staff | `/staff/dashboard`, `/staff/issues`, `/staff/issues/:id`, `/staff/profile`; with delegated permissions also `/staff/data`, `/staff/content`, `/staff/activities`, `/staff/query(/:id)`, `/staff/failed-questions` |
+| Student | `/chat`, `/scholarships(/:id)`, `/jobs(/:id)`, `/events(/:id)` (with RSVP), `/saved` (saved items + application tracker), `/queue` (office walk-in queue — in the sidebar once an office uses it), `/issues`, `/issues/new`, `/issues/:id`, `/profile` (incl. search alerts and browser notifications) |
+| Staff | `/staff/dashboard`, `/staff/issues`, `/staff/issues/:id`, `/staff/queue` (walk-in queue), `/staff/profile`; with delegated permissions also `/staff/data`, `/staff/content`, `/staff/activities`, `/staff/query(/:id)`, `/staff/failed-questions` |
 | Administrator | `/admin/dashboard`, `/admin/users(/:id)`, `/admin/staff`, `/admin/departments`, `/admin/query(/:id)`, `/admin/data`, `/admin/failed-questions`, `/admin/content`, `/admin/activities`, `/admin/logs`, `/admin/health`, `/admin/settings`, `/admin/profile` |
 | Super Admin | `/platform/login`, `/platform/dashboard`, `/platform/tenants(/new, /:slug)`, `/platform/usage`, `/platform/health`, `/platform/audit-log` |
 
@@ -66,6 +66,8 @@ It adds a chat button (`data-label`, `data-color` optional) that opens `/embed?u
 ## PWA
 
 `public/manifest.json` and `public/sw.js` provide the installable shell and an offline fallback. Once a tenant is known, `App.jsx` swaps the manifest for the tenant's own (`/api/manifest/<slug>`) so the installed app carries the university's name and colour. The installed app opens at `/`, which sends signed-in users to their home.
+
+The service worker also shows **browser notifications** (web push): `src/utils/push.js` subscribes the device with the server's VAPID public key (`/api/push/config`) and Profile → Browser notifications turns it on/off; logging out switches the device off. `main.jsx` registers the service worker only in the production build (in development it would fight Vite's hot reload), so test push with `npm run build && npx vite preview --port 5173` — on port 5173 so the API's CORS allows it.
 
 ## Conventions
 
