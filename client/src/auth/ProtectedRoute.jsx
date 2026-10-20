@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { logoutUser } from '../redux/slices/authSlice';
 import toast from 'react-hot-toast';
+import { homeFor } from './roleHome';
 
 const ProtectedRoute = ({ children, roles }) => {
   const { user, loadingUser } = useSelector((s) => s.auth);
@@ -33,9 +34,7 @@ const ProtectedRoute = ({ children, roles }) => {
   }
 
   if (roles && roles.length > 0 && !roles.includes(user.role)) {
-    if (user.role === "staff") return <Navigate to="/staff/dashboard" replace />;
-    if (user.role === "admin") return <Navigate to="/admin/dashboard" replace />;
-    return <Navigate to="/chat" replace />;
+    return <Navigate to={homeFor(user)} replace />;
   }
 
   return children;

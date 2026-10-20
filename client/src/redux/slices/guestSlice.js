@@ -1,6 +1,11 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "../../utils/axios";
 import { setTenantBranding, setFeeConfig } from "./tenantSlice";
+import { captureGuestTenant, guestTenantParams } from "../../utils/guestTenant";
+
+// Before the initial state reads the stored guest session (a link to a
+// different university starts a fresh one).
+captureGuestTenant();
 
 // Populates tenant.branding for guests, who have no login response to get it
 // from otherwise — GuestChat.jsx previously had no branding source at all
@@ -9,7 +14,7 @@ export const fetchGuestBranding = createAsyncThunk(
   "guest/fetchBranding",
   async (_, { dispatch, rejectWithValue }) => {
     try {
-      const { data } = await axios.get("/api/guest/branding");
+      const { data } = await axios.get("/api/guest/branding", { params: guestTenantParams() });
       if (data.success) {
         dispatch(setTenantBranding(data.branding));
         dispatch(setFeeConfig(data.feeConfig));
@@ -35,6 +40,7 @@ export const sendGuestMessage = createAsyncThunk(
       const { data } = await axios.post("/api/guest/chat", {
         message: message.trim(),
         ...(sessionId ? { sessionId } : {}),
+        ...guestTenantParams(),
       });
 
       if (data.success) {
@@ -75,7 +81,7 @@ export const sendGuestFeedback = createAsyncThunk(
   async ({ answerIndex, helpful }, { getState }) => {
     try {
       const sessionId = getState().guest.guestSessionId;
-      const { data } = await axios.post("/api/guest/feedback", { sessionId, answerIndex, helpful });
+      const { data } = await axios.post("/api/guest/feedback", { sessionId, answerIndex, helpful, ...guestTenantParams() });
       return { ...data, answerIndex, helpful };
     } catch (error) {
       return { success: false, message: error.response?.data?.message || "Couldn't save your feedback" };
@@ -89,7 +95,7 @@ export const fetchGuestListings = createAsyncThunk(
   "guest/fetchListings",
   async (_, { rejectWithValue }) => {
     try {
-      const { data } = await axios.get("/api/guest/listings");
+      const { data } = await axios.get("/api/guest/listings", { params: guestTenantParams() });
       if (data.success) return { scholarships: data.scholarships, events: data.events };
       return rejectWithValue(data.message);
     } catch (error) {
@@ -105,7 +111,7 @@ export const fetchGuestActivityTabs = createAsyncThunk(
   "guest/fetchActivityTabs",
   async (_, { rejectWithValue }) => {
     try {
-      const { data } = await axios.get("/api/guest/activity-tabs");
+      const { data } = await axios.get("/api/guest/activity-tabs", { params: guestTenantParams() });
       if (data.success) return data.tabs;
       return rejectWithValue(data.message);
     } catch (error) {
@@ -161,7 +167,13 @@ export const clearGuestSession = createAsyncThunk(
 );
 
 const initialState = {
-  guestSessionId: localStorage.getItem("guestSessionId") || null,
+  guestSessionId: (() => {
+    try {
+      return localStorage.getItem("guestSessionId") || null;
+    } catch {
+      return null;
+    }
+  })(),
   guestMessages: [],
   // Rev5 §19.3 — follow-up chips for the most recent assistant answer only.
   followUpChips: [],

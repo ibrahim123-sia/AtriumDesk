@@ -11,6 +11,7 @@ import Terms from "./legal/Terms";
 import ProtectedPlatformRoute from "./platform/ProtectedPlatformRoute";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import ChatPage from "./student/pages/ChatPage";
+import HomeRoute from "./auth/HomeRoute";
 import GuestChat from "./guest/GuestChat";
 import GuestScholarships from "./guest/GuestScholarships";
 import GuestActivityPage from "./guest/GuestActivityPage";
@@ -168,7 +169,9 @@ const App = () => {
       <Suspense fallback={<RouteFallback />}>
       <Routes>
         {/* Public routes */}
-        <Route path="/" element={<GuestChat />} />
+        <Route path="/" element={<HomeRoute />} />
+        {/* The website widget's frame (public/widget.js) — guest chat only. */}
+        <Route path="/embed" element={<GuestChat embedded />} />
         <Route path="/guest/scholarships" element={<GuestScholarships />} />
         <Route path="/guest/activities/:slug" element={<GuestActivityPage />} />
         <Route path="/login" element={<Login />} />

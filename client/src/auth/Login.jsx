@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { toast } from "react-hot-toast";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { loginUser, forgotPassword, resetPassword } from "../redux/slices/authSlice";
 import { toggleTheme as toggleThemeAction } from "../redux/slices/themeSlice";
+import { homeFor } from "./roleHome";
 import {
   Sun,
   Moon,
@@ -19,7 +20,9 @@ import {
 const Login = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
   const theme = useSelector((s) => s.theme.theme);
+  const signedInUser = useSelector((s) => s.auth.user);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [resetEmail, setResetEmail] = useState("");
@@ -31,6 +34,11 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
 
+  // Already signed in (e.g. the installed app opened on /login).
+  if (signedInUser && !loading && !signedInUser.isBlocked) {
+    return <Navigate to={homeFor(signedInUser)} replace />;
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -38,14 +46,9 @@ const Login = () => {
     const result = await dispatch(loginUser({ email, password })).unwrap();
 
     if (result.success) {
-      const role = result.user?.role;
-      const dest =
-        role === "staff"
-          ? "/staff/dashboard"
-          : role === "admin"
-          ? "/admin/dashboard"
-          : "/chat";
-      navigate(dest, { replace: true });
+      // Back to the page that asked them to sign in, if there was one.
+      const from = location.state?.from?.pathname;
+      navigate(from && from !== "/login" ? from : homeFor(result.user), { replace: true });
     } else if (result.needsVerification) {
       toast("Your email isn't verified yet — enter the code we send you.");
       navigate("/register", { state: { verifyEmail: result.email } });
@@ -195,7 +198,7 @@ const Login = () => {
                             ? "bg-[#081210] border-[#1E3A35] text-[#E8F5F2]"
                             : "bg-[#F3F8F7] border-[#D9E7E4] text-[#0F2E2A]"
                         }`}
-                        placeholder="student@maju.edu.pk"
+                        placeholder="you@youruniversity.edu"
                         required
                       />
                     </div>
@@ -321,7 +324,7 @@ const Login = () => {
                             ? "bg-[#081210] border-[#1E3A35] text-[#E8F5F2]"
                             : "bg-[#F3F8F7] border-[#D9E7E4] text-[#0F2E2A]"
                         }`}
-                        placeholder="student@maju.edu.pk"
+                        placeholder="you@youruniversity.edu"
                         required
                       />
                     </div>

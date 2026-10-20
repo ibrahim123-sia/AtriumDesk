@@ -31,8 +31,9 @@ const MainLayout = () => {
           setIsMenuOpen={setIsMenuOpen}
         />
 
-        {/* Main Content Area */}
-        <div className="flex-1 overflow-hidden md:ml-0">
+        {/* Main Content Area — on phones, room for the fixed menu button
+            so it doesn't sit on top of page titles */}
+        <div className="flex-1 overflow-hidden md:ml-0 max-md:pt-14">
           <Outlet />
         </div>
       </div>

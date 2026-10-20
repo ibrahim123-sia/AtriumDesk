@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import { fetchTenantSettings, updateTenantSettings } from "../../redux/slices/tenantSlice";
 import { getPalette } from "../utils/palette";
 import StudentEmailPatternBuilder from "../components/StudentEmailPatternBuilder";
+import ShareAssistant from "../components/ShareAssistant";
 
 // Defined at module scope, not inside Settings — a component declared
 // inside another component's body is a new function identity every render,
@@ -152,6 +153,8 @@ const Settings = () => {
           institution. Changes take effect immediately, no redeploy needed.
         </p>
       </div>
+
+      <ShareAssistant slug={settings?.slug || tenantBranding?.slug} C={C} />
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field C={C} label="University name (full)">

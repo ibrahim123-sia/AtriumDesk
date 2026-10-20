@@ -5,6 +5,7 @@ import { getPalette } from "../../administrator/utils/palette";
 import { logoutUser } from "../../redux/slices/authSlice";
 import TopNavbar from "../../components/layouts/TopNavbar";
 import NotificationBell from "../../components/NotificationBell";
+import { brandInitials, safeLogoUrl } from "../../utils/branding";
 
 const BASE_NAV = [
   { to: "/staff/dashboard", label: "Dashboard" },
@@ -49,6 +50,8 @@ const StaffShell = () => {
     <div className="min-h-screen" style={{ backgroundColor: C.bg }}>
       <TopNavbar
         wordmark={tenantBranding?.universityShort || "AtriumDesk"}
+        logoLabel={brandInitials(tenantBranding?.universityShort)}
+        logoUrl={safeLogoUrl(tenantBranding?.logoUrl)}
         subLabel={user?.staffTitle || "Staff Console"}
         roleLabel="Staff"
         navItems={NAV}

@@ -333,6 +333,9 @@ export const guestTextChatController = async (req, res) => {
       });
     }
 
+    // The resolved university, not the raw request value (absent = default).
+    const tenantSlug = guestTenant.slug;
+
     // Get or create guest session (a new one if this one started elsewhere)
     if (guestSessions.get(sessionId)?.tenantSlug && guestSessions.get(sessionId).tenantSlug !== guestTenant.slug) {
       sessionId = newGuestSessionId();
@@ -366,28 +369,28 @@ export const guestTextChatController = async (req, res) => {
     // no prior turn in this session (a follow-up's answer is context-
     // dependent, so it's never served from the flat question-text cache).
     let botReply, confidenceTier, sources = [];
-    const cached = history.length === 0 ? getCachedGuestAnswer(tenant, message) : null;
+    const cached = history.length === 0 ? getCachedGuestAnswer(tenantSlug, message) : null;
     if (cached) {
       botReply = cached.answer;
       confidenceTier = cached.confidenceTier;
       sources = cached.sources || [];
     } else {
       try {
-        const result = await getPythonBackendResponse(message, { sessionId, history, tenantSlug: tenant, branding: guestTenant.branding, ragConfig: guestTenant.ragConfig });
+        const result = await getPythonBackendResponse(message, { sessionId, history, tenantSlug, branding: guestTenant.branding, ragConfig: guestTenant.ragConfig });
         botReply = result.answer;
         confidenceTier = result.confidenceTier;
         sources = result.sources || [];
-        logAiUsage(tenant, result.usage, "guest_chat");
+        logAiUsage(tenantSlug, result.usage, "guest_chat");
         if (history.length === 0 && confidenceTier !== "low") {
-          setCachedGuestAnswer(tenant, message, botReply, confidenceTier, sources);
+          setCachedGuestAnswer(tenantSlug, message, botReply, confidenceTier, sources);
         }
       } catch (error) {
         console.error("Failed to get response from Python backend:", error.message);
         botReply = "Sorry, I'm unable to connect to the university knowledge base at the moment. Please try again later.";
       }
     }
-    logIfFailedQuestion(tenant, { question: message, confidenceTier });
-    const followUpChips = await buildFollowUpChips(tenant, message);
+    logIfFailedQuestion(tenantSlug, { question: message, confidenceTier });
+    const followUpChips = await buildFollowUpChips(tenantSlug, message);
 
     // Add bot response to session
     session.messages.push({

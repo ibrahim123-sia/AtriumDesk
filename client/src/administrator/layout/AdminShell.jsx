@@ -5,6 +5,7 @@ import { getPalette } from "../utils/palette";
 import { logoutUser } from "../../redux/slices/authSlice";
 import TopNavbar from "../../components/layouts/TopNavbar";
 import NotificationBell from "../../components/NotificationBell";
+import { brandInitials, safeLogoUrl } from "../../utils/branding";
 import ImpersonationBanner from "../../components/ImpersonationBanner";
 
 const TITLES = {
@@ -63,6 +64,8 @@ const AdminShell = () => {
       <ImpersonationBanner />
       <TopNavbar
         wordmark={tenantBranding?.universityShort || "AtriumDesk"}
+        logoLabel={brandInitials(tenantBranding?.universityShort)}
+        logoUrl={safeLogoUrl(tenantBranding?.logoUrl)}
         subLabel="Administrator"
         roleLabel="Administrator"
         navItems={NAV}

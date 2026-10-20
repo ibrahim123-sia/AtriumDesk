@@ -15,7 +15,7 @@ import { Menu, X, ChevronDown } from "lucide-react";
  * the `md` breakpoint, per explicit ask for "industry standard" responsive
  * navigation.
  */
-const TopNavbar = ({ logoLabel = "AD", wordmark = "AtriumDesk", subLabel, roleLabel, navItems, maxVisibleTabs, avatarInitials, userName, userEmail, menuItems, actions, C }) => {
+const TopNavbar = ({ logoLabel = "AD", logoUrl, wordmark = "AtriumDesk", subLabel, roleLabel, navItems, maxVisibleTabs, avatarInitials, userName, userEmail, menuItems, actions, C }) => {
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -59,10 +59,10 @@ const TopNavbar = ({ logoLabel = "AD", wordmark = "AtriumDesk", subLabel, roleLa
       <div className="max-w-[1360px] mx-auto flex items-center gap-3 px-3 md:px-[22px]" style={{ height: 58 }}>
         <a href="#" onClick={(e) => { e.preventDefault(); navigate(navItems[0]?.to || "/"); }} className="flex items-center gap-2.5 shrink-0">
           <div
-            className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center font-extrabold"
+            className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center font-extrabold overflow-hidden"
             style={{ background: "#fff", color: C.navy, fontSize: 14 }}
           >
-            {logoLabel}
+            {logoUrl ? <img src={logoUrl} alt="" className="w-full h-full object-contain p-0.5" /> : logoLabel}
           </div>
           <span className="hidden sm:flex flex-col leading-tight text-white font-extrabold" style={{ fontSize: 15.5 }}>
             {wordmark}

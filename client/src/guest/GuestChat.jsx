@@ -26,7 +26,9 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-const GuestChat = () => {
+// `embedded`: the website widget's iframe (/embed) — just the conversation,
+// with links to the full site opening in a new tab.
+const GuestChat = ({ embedded = false }) => {
   const dispatch = useDispatch();
   const theme = useSelector((s) => s.theme.theme);
   const guestMessages = useSelector((s) => s.guest.guestMessages);
@@ -37,7 +39,9 @@ const GuestChat = () => {
   const tenantBranding = useSelector((s) => s.tenant.branding);
   const universityShort = tenantBranding?.universityShort || "your university";
 
-  const navigate = useNavigate();
+  const routerNavigate = useNavigate();
+  // Inside a university's website frame, the full site opens in a new tab.
+  const navigate = (to) => (embedded ? window.open(to, "_blank", "noopener") : routerNavigate(to));
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
 
@@ -185,21 +189,38 @@ const GuestChat = () => {
           : "bg-linear-to-b from-[#D9F2EE] via-white to-[#F3F8F7]"
       }`}
     >
-      <GuestSidebar
-        activeTab="chat"
-        isMenuOpen={isMenuOpen}
-        setIsMenuOpen={setIsMenuOpen}
-        theme={theme}
-        toggleTheme={toggleTheme}
-        guestSessionId={guestSessionId}
-        onClearChat={handleClearChat}
-      />
+      {!embedded && (
+        <GuestSidebar
+          activeTab="chat"
+          isMenuOpen={isMenuOpen}
+          setIsMenuOpen={setIsMenuOpen}
+          theme={theme}
+          toggleTheme={toggleTheme}
+          guestSessionId={guestSessionId}
+          onClearChat={handleClearChat}
+        />
+      )}
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col h-full overflow-hidden md:ml-0">
+        {embedded && (
+          <header className="px-4 py-3 border-b flex items-center justify-between gap-3 bg-[#0D9488] text-white">
+            <div className="min-w-0">
+              <p className="text-sm font-bold truncate">{tenantBranding?.universityName || universityShort} assistant</p>
+              <p className="text-[11px] opacity-80">Admissions, programmes, fees and campus life</p>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              {guestSessionId && (
+                <button onClick={handleClearChat} className="p-1.5 rounded-md hover:bg-white/15" aria-label="Clear chat" title="Clear chat">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </header>
+        )}
         {/* Mobile Header */}
         <header
-          className={`md:hidden sticky top-0 z-10 border-b ${
+          className={`md:hidden sticky top-0 z-10 border-b ${embedded ? "hidden" : ""} ${
             theme === "dark"
               ? "bg-[#0F2320]/95 border-[#1E3A35] backdrop-blur-lg"
               : "bg-white/95 border-[#D9E7E4] backdrop-blur-lg"
@@ -209,6 +230,7 @@ const GuestChat = () => {
             <div className="flex items-center justify-between">
               <button
                 onClick={() => setIsMenuOpen(true)}
+                aria-label="Open menu"
                 className="p-2 hover:bg-[#F3F8F7] dark:hover:bg-[#152E2A] rounded-lg"
               >
                 <svg
@@ -228,7 +250,7 @@ const GuestChat = () => {
 
               <div className="flex flex-col items-center">
                 <h1 className="text-lg font-bold text-[#0F2E2A] dark:text-[#E8F5F2]">
-                  AtriumDesk
+                  {tenantBranding?.universityShort || "AtriumDesk"}
                 </h1>
                 <p className="text-xs text-[#53716C] dark:text-[#8FB0AA]">
                   Guest Mode
@@ -240,6 +262,7 @@ const GuestChat = () => {
                   onClick={handleClearChat}
                   className="p-2 hover:bg-[#F3F8F7] dark:hover:bg-[#152E2A] rounded-lg"
                   title="Clear chat"
+                  aria-label="Clear chat"
                 >
                   <Trash2 className="w-5 h-5 text-[#53716C] dark:text-[#8FB0AA]" />
                 </button>
@@ -268,8 +291,9 @@ const GuestChat = () => {
                   theme === "dark" ? "text-yellow-300" : "text-yellow-700"
                 }`}
               >
-                Guest Mode: Text chat only • No voice/job features • Chat
-                not saved unless you register
+                {embedded
+                  ? "Guest chat — register for saved history and more"
+                  : "Guest Mode: Text chat only • No voice/job features • Chat not saved unless you register"}
               </p>
             </div>
             <button
@@ -300,7 +324,7 @@ const GuestChat = () => {
                 </div>
                 <div className="flex-1 text-center md:text-left">
                   <h2 className="text-lg font-bold text-[#0F2E2A] dark:text-[#E8F5F2] mb-2">
-                    Welcome to AtriumDesk!
+                    {tenantBranding?.universityShort ? `Welcome to ${tenantBranding.universityShort}!` : "Welcome!"}
                   </h2>
                   <p
                     className={`text-sm ${
@@ -344,7 +368,7 @@ const GuestChat = () => {
               ))}
             </div>
 
-            {listings.events.length > 0 && (
+            {!embedded && listings.events.length > 0 && (
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-[#0F2E2A] dark:text-[#E8F5F2] mb-2 flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-[#0D9488] dark:text-[#4E9128]" />

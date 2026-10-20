@@ -17,6 +17,7 @@ import {
   loginLimiter,
   unsubscribeFromDigest,
 } from '../controllers/userController.js'
+import { exportMyData, deleteMyAccount, deleteAccountLimiter } from '../controllers/accountDataController.js'
 import { protect } from '../middlewares/auth.js'
 import { avatarUpload, cvUpload, handleUploadError } from '../middlewares/upload.js'
 
@@ -53,5 +54,8 @@ userRouter.patch(
 userRouter.patch('/profile/details', protect, updateProfileDetails)
 userRouter.post('/cv/parse', protect, cvUpload.single('cv'), handleUploadError, parseCv)
 userRouter.post('/change-password', protect, changePassword)
+// Rev 5 §13.3 — download my data / delete my account
+userRouter.get('/me/export', protect, exportMyData)
+userRouter.post('/me/delete', protect, deleteAccountLimiter, deleteMyAccount)
 
 export default userRouter

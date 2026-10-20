@@ -8,6 +8,19 @@
 /sw.js
   Cache-Control: no-cache
 
+# No other site may frame the app (clickjacking on the signed-in pages)...
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
+  Content-Security-Policy: frame-ancestors 'self'
+  X-Frame-Options: SAMEORIGIN
+
+# ...except the guest chat the website widget shows inside universities' sites.
+/embed
+  ! Content-Security-Policy
+  ! X-Frame-Options
+
+# The widget script is loaded by universities' websites.
+/widget.js
+  Cache-Control: public, max-age=3600
+  Access-Control-Allow-Origin: *

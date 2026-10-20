@@ -30,6 +30,7 @@ import moment from "moment";
 import { useNavigate, useLocation } from "react-router-dom";
 import NotificationBell from "./NotificationBell";
 import { getPalette } from "../administrator/utils/palette";
+import { brandInitials, safeLogoUrl } from "../utils/branding";
 import ConfirmDialog from "../administrator/components/ConfirmDialog";
 
 // Defined at module scope, not inside Sidebar — a component declared inside
@@ -107,11 +108,15 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
     };
   }, [isMenuOpen, setIsMenuOpen]);
 
+  // Close the phone drawer after navigating — only when the path actually
+  // changes (this used to depend on isMenuOpen too, so opening the menu
+  // re-ran it and shut the drawer again at once).
+  const lastPathRef = useRef(location.pathname);
   useEffect(() => {
-    if (isMenuOpen && window.innerWidth < 768) {
-      setIsMenuOpen(false);
-    }
-  }, [location.pathname, isMenuOpen, setIsMenuOpen]);
+    if (lastPathRef.current === location.pathname) return;
+    lastPathRef.current = location.pathname;
+    if (window.innerWidth < 768) setIsMenuOpen(false);
+  }, [location.pathname, setIsMenuOpen]);
 
   useEffect(() => {
     const handleEscapeKey = (event) => {
@@ -239,10 +244,14 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
         <Link to="/chat">
           <div className="p-4 flex items-center gap-3">
             <div
-              className="w-9 h-9 rounded-[10px] flex items-center justify-center font-extrabold"
+              className="w-9 h-9 rounded-[10px] flex items-center justify-center font-extrabold overflow-hidden"
               style={{ background: "#fff", color: C.navy, fontSize: 13 }}
             >
-              UA
+              {safeLogoUrl(tenantBranding?.logoUrl) ? (
+                <img src={tenantBranding.logoUrl} alt="" className="w-full h-full object-contain p-0.5" />
+              ) : (
+                brandInitials(tenantBranding?.universityShort)
+              )}
             </div>
             <div>
               <h1 className="text-base font-extrabold leading-tight text-white">

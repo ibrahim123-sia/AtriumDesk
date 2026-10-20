@@ -22,6 +22,7 @@ import {
 import toast from "react-hot-toast";
 import { updateProfile, updateProfileDetails, changePassword, parseCv } from "../redux/slices/authSlice";
 import { getPalette } from "../administrator/utils/palette";
+import YourDataCard from "./YourDataCard";
 
 const FIELD_LABEL_CLASS = "text-xs font-semibold uppercase block mb-1";
 const FIELD_HINT_CLASS = "text-xs mt-1";
@@ -930,6 +931,8 @@ const Profile = () => {
             </button>
           </div>
         </form>
+
+        {isStudent && <YourDataCard C={C} />}
       </div>
     </div>
   );

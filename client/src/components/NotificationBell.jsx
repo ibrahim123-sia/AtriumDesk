@@ -82,7 +82,14 @@ const NotificationBell = ({ onDark = false }) => {
 
       {open && (
         <div
-          className={`absolute ${onDark ? "right-0" : "left-0"} mt-2 w-80 max-w-[calc(100vw-2rem)] max-h-96 overflow-hidden rounded-xl border shadow-lg z-50 flex flex-col`}
+          // On the navbar it opens leftwards from the right edge; in the student
+          // sidebar it spans the sidebar on phones (a 320px panel opening
+          // rightwards from the bell ran off a phone screen).
+          className={`${
+            onDark
+              ? "absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)]"
+              : "fixed left-3 right-3 top-24 md:absolute md:left-0 md:right-auto md:top-auto md:mt-2 md:w-80"
+          } max-h-96 overflow-hidden rounded-xl border shadow-lg z-50 flex flex-col`}
           style={{ backgroundColor: C.surface, borderColor: C.border, color: C.text }}
         >
           <div

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { guestTenantParams } from "../utils/guestTenant";
 import { useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import axios from "../utils/axios";
@@ -69,7 +70,7 @@ const GuestActivityPage = () => {
     setLoading(true);
     setNotFound(false);
     axios
-      .get(`/api/guest/activity-tabs/${slug}`)
+      .get(`/api/guest/activity-tabs/${slug}`, { params: guestTenantParams() })
       .then(({ data }) => {
         if (cancelled) return;
         if (data.success) setTab(data.tab);

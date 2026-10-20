@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { safeLogoUrl } from "../utils/branding";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -76,10 +77,14 @@ const GuestSidebar = ({
 
         <div className="p-6 border-b border-[#D9E7E4] dark:border-[#1E3A35]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center relative bg-[#0D9488]">
-              <span className="text-white font-bold text-lg leading-none">{universityShort.charAt(0).toUpperCase()}</span>
-              <span className="absolute bottom-1 left-2 right-2 h-0.5 rounded-full bg-[#4E9128]" />
-            </div>
+            {safeLogoUrl(tenantBranding?.logoUrl) ? (
+              <img src={tenantBranding.logoUrl} alt="" className="w-10 h-10 rounded-lg object-contain bg-white border border-[#D9E7E4]" />
+            ) : (
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center relative bg-[#0D9488]">
+                <span className="text-white font-bold text-lg leading-none">{universityShort.charAt(0).toUpperCase()}</span>
+                <span className="absolute bottom-1 left-2 right-2 h-0.5 rounded-full bg-[#4E9128]" />
+              </div>
+            )}
             <div>
               <h1 className="text-lg font-bold text-[#0F2E2A] dark:text-[#E8F5F2] leading-tight">
                 AtriumDesk

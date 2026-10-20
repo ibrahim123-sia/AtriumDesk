@@ -243,7 +243,7 @@ const Register = () => {
                           ? "bg-[#081210] border-[#1E3A35] text-[#E8F5F2]"
                           : "bg-[#F3F8F7] border-[#D9E7E4] text-[#0F2E2A]"
                       }`}
-                      placeholder="student@maju.edu.pk"
+                      placeholder="you@youruniversity.edu"
                       required
                     />
                   </div>
