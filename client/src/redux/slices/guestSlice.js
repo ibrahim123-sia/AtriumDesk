@@ -34,7 +34,7 @@ export const sendGuestMessage = createAsyncThunk(
 
       const { data } = await axios.post("/api/guest/chat", {
         message: message.trim(),
-        sessionId,
+        ...(sessionId ? { sessionId } : {}),
       });
 
       if (data.success) {
@@ -56,10 +56,29 @@ export const sendGuestMessage = createAsyncThunk(
       if (error.response?.status === 403 && error.response?.data?.sessionCapReached) {
         return { success: false, message: error.response.data.message, sessionCapReached: true };
       }
+      // Chatbot switched off or the university unavailable: say so.
+      if ([403, 404].includes(error.response?.status) && error.response?.data?.message) {
+        return { success: false, message: error.response.data.message };
+      }
       let message = "Failed to send message";
       if (error.response?.status === 429) message = error.response?.data?.message || "Too many messages";
       else if (error.code === "ERR_NETWORK") message = "Network error";
       return { success: false, message };
+    }
+  }
+);
+
+// Thumbs up/down on an answer; a thumbs-down flags the question as a gap
+// in the university's admissions content (Rev 5 §19.7).
+export const sendGuestFeedback = createAsyncThunk(
+  "guest/feedback",
+  async ({ answerIndex, helpful }, { getState }) => {
+    try {
+      const sessionId = getState().guest.guestSessionId;
+      const { data } = await axios.post("/api/guest/feedback", { sessionId, answerIndex, helpful });
+      return { ...data, answerIndex, helpful };
+    } catch (error) {
+      return { success: false, message: error.response?.data?.message || "Couldn't save your feedback" };
     }
   }
 );
@@ -149,6 +168,8 @@ const initialState = {
   // Rev5 §19.2 — MAJU's own scholarships + upcoming events for the funnel.
   listings: { scholarships: [], events: [] },
   activityTabs: [],
+  // Questions left before the guest-session cap (null until known).
+  messagesRemaining: null,
 };
 
 const guestSlice = createSlice({
@@ -159,8 +180,13 @@ const guestSlice = createSlice({
     builder
       .addCase(sendGuestMessage.fulfilled, (state, action) => {
         if (!action.payload.success) return;
-        if (!state.guestSessionId && action.payload.sessionId) {
-          localStorage.setItem("guestSessionId", action.payload.sessionId);
+        // The server issues the id (and a new one if ours was unknown).
+        if (action.payload.sessionId && action.payload.sessionId !== state.guestSessionId) {
+          try {
+            localStorage.setItem("guestSessionId", action.payload.sessionId);
+          } catch {
+            /* storage unavailable — the id still lives in the store */
+          }
           state.guestSessionId = action.payload.sessionId;
         }
         state.guestMessages = [
@@ -176,19 +202,34 @@ const guestSlice = createSlice({
             content: action.payload.reply.content,
             timestamp: action.payload.reply.timestamp,
             type: "text",
+            sources: action.payload.reply.sources || [],
+            answerIndex: action.payload.reply.answerIndex,
+            feedback: undefined,
           },
         ];
         state.followUpChips = action.payload.followUpChips;
+        if (typeof action.payload.messagesRemaining === "number") {
+          state.messagesRemaining = action.payload.messagesRemaining;
+        }
       })
       .addCase(fetchGuestChatHistory.fulfilled, (state, action) => {
         if (action.payload.success) {
-          state.guestMessages = action.payload.messages;
+          // An answer's position in the session is what feedback points at.
+          state.guestMessages = action.payload.messages.map((m, i) =>
+            m.role === "assistant" ? { ...m, answerIndex: i } : m
+          );
         }
+      })
+      .addCase(sendGuestFeedback.fulfilled, (state, action) => {
+        if (!action.payload.success) return;
+        const message = state.guestMessages.find((m) => m.answerIndex === action.payload.answerIndex);
+        if (message) message.feedback = action.payload.helpful;
       })
       .addCase(clearGuestSession.fulfilled, (state) => {
         state.guestSessionId = null;
         state.guestMessages = [];
         state.followUpChips = [];
+        state.messagesRemaining = null;
       })
       .addCase(fetchGuestListings.fulfilled, (state, action) => {
         state.listings = action.payload;

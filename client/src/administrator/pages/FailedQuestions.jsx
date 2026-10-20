@@ -12,6 +12,10 @@ import EmptyState from "../components/EmptyState";
 import AdminModal from "../components/AdminModal";
 import { getPalette } from "../utils/palette";
 
+// Why a question is here: nothing good was found for it, or someone who
+// asked it said the answer didn't help.
+const REASON_LABELS = { low_confidence: "No good match", unhelpful: "Rated unhelpful" };
+
 const USER_TYPE_TABS = [
   { key: "", label: "All" },
   { key: "student", label: "Student" },
@@ -128,17 +132,18 @@ const FailedQuestions = () => {
         columns={[
           { key: "question", label: "Question" },
           { key: "count", label: "Asked" },
+          { key: "reasons", label: "Why" },
           { key: "userType", label: "Who" },
           { key: "lastAskedAt", label: "Last asked" },
           { key: "actions", label: "" },
         ]}
       >
         {loading ? (
-          <LoadingSkeleton cols={5} />
+          <LoadingSkeleton cols={6} />
         ) : groups.length === 0 ? (
           <tbody>
             <tr>
-              <td colSpan={5}>
+              <td colSpan={6}>
                 <EmptyState
                   icon={MessageSquareWarning}
                   title="No failed questions logged"
@@ -166,6 +171,22 @@ const FailedQuestions = () => {
                   >
                     {g.count}×
                   </span>
+                </AdminTableCell>
+                <AdminTableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {(g.reasons?.length ? g.reasons : ["low_confidence"]).map((r) => (
+                      <span
+                        key={r}
+                        className="px-2 py-0.5 text-xs rounded-full font-medium whitespace-nowrap"
+                        style={{
+                          backgroundColor: r === "unhelpful" ? `${C.red}14` : `${C.muted}1A`,
+                          color: r === "unhelpful" ? C.red : C.muted,
+                        }}
+                      >
+                        {REASON_LABELS[r] || r}
+                      </span>
+                    ))}
+                  </div>
                 </AdminTableCell>
                 <AdminTableCell>
                   <span
@@ -206,6 +227,19 @@ const FailedQuestions = () => {
                 Asked {activeGroup.count}× · last {moment(activeGroup.lastAskedAt).fromNow()} · {activeGroup.userType}
               </p>
             </div>
+            {activeGroup.lastAnswer && (
+              <div>
+                <p className="text-xs font-semibold uppercase mb-1" style={{ color: C.muted }}>
+                  The answer that was rated unhelpful
+                </p>
+                <p
+                  className="text-sm whitespace-pre-wrap rounded-lg border px-3 py-2 max-h-40 overflow-y-auto"
+                  style={{ color: C.text, borderColor: C.border }}
+                >
+                  {activeGroup.lastAnswer}
+                </p>
+              </div>
+            )}
             <div>
               <label className="text-xs font-medium block mb-1" style={{ color: C.muted }}>Answer</label>
               <textarea

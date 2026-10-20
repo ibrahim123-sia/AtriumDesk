@@ -107,9 +107,9 @@ function getCachedGuestAnswer(tenantSlug, question) {
   return entry;
 }
 
-function setCachedGuestAnswer(tenantSlug, question, answer, confidenceTier) {
+function setCachedGuestAnswer(tenantSlug, question, answer, confidenceTier, sources = []) {
   const key = `${tenantSlug || DEFAULT_TENANT_SLUG}:${normalizeQuestion(question)}`;
-  guestAnswerCache.set(key, { answer, confidenceTier, expiresAt: Date.now() + GUEST_ANSWER_CACHE_TTL_MS });
+  guestAnswerCache.set(key, { answer, confidenceTier, sources, expiresAt: Date.now() + GUEST_ANSWER_CACHE_TTL_MS });
 }
 
 // Build the trimmed history payload from guest messages. Only role/content is sent.
@@ -159,6 +159,7 @@ async function getPythonBackendResponse(question, context = {}) {
     return {
       answer: data.answer || "No response from Python backend",
       confidenceTier: data.confidence_tier || null,
+      sources: Array.isArray(data.sources) ? data.sources.slice(0, 3) : [],
       usage: data.usage || null,
     };
   } catch (error) {
@@ -258,11 +259,23 @@ async function buildFollowUpChips(tenantSlug, question) {
   }
 }
 
-// Get or create guest session
-const getOrCreateGuestSession = (sessionId) => {
+// Session ids this server issues. Anything else a client sends (null on a
+// first visit, a made-up string) gets a fresh id — before this, every
+// first-time guest sent null and they all shared one session: one guest's
+// conversation went to the model as another's history, and the per-session
+// cap counted everyone's questions together.
+const GUEST_SESSION_ID = /^guest_[0-9a-f]{32}$/;
+// crypto.randomBytes: 128 bits, so another guest's id (and with it their
+// history via GET /api/guest/history) can't be guessed.
+const newGuestSessionId = () => `guest_${crypto.randomBytes(16).toString("hex")}`;
+
+// Get or create guest session — a session belongs to the university it
+// started on.
+const getOrCreateGuestSession = (sessionId, tenantSlug) => {
   if (!guestSessions.has(sessionId)) {
     guestSessions.set(sessionId, {
       id: sessionId,
+      tenantSlug,
       messages: [],
       createdAt: Date.now(),
       lastActivity: Date.now()
@@ -291,11 +304,9 @@ const cleanupOldSessions = () => {
 // Guest text chat controller — uses Python backend
 export const guestTextChatController = async (req, res) => {
   try {
-    // Math.random() is not cryptographically secure and this ID embeds a
-    // coarse timestamp, so a predictable ID could be brute-forced to pull
-    // another guest's history via GET /api/guest/history?sessionId=... —
-    // crypto.randomBytes gives 128 bits of unguessable entropy instead.
-    const { message, tenant, sessionId = `guest_${crypto.randomBytes(16).toString("hex")}` } = req.body;
+    const { message, tenant } = req.body;
+    const requestedId = req.body.sessionId;
+    let sessionId = typeof requestedId === "string" && GUEST_SESSION_ID.test(requestedId) ? requestedId : newGuestSessionId();
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return res.status(400).json({
@@ -320,8 +331,11 @@ export const guestTextChatController = async (req, res) => {
       });
     }
 
-    // Get or create guest session
-    const session = getOrCreateGuestSession(sessionId);
+    // Get or create guest session (a new one if this one started elsewhere)
+    if (guestSessions.get(sessionId)?.tenantSlug && guestSessions.get(sessionId).tenantSlug !== guestTenant.slug) {
+      sessionId = newGuestSessionId();
+    }
+    const session = getOrCreateGuestSession(sessionId, guestTenant.slug);
 
     const userMessageCount = session.messages.filter((m) => m.role === "user").length;
     if (userMessageCount >= GUEST_SESSION_MESSAGE_CAP) {
@@ -349,19 +363,21 @@ export const guestTextChatController = async (req, res) => {
     // Get response from Python backend — cache hit only for a question with
     // no prior turn in this session (a follow-up's answer is context-
     // dependent, so it's never served from the flat question-text cache).
-    let botReply, confidenceTier;
+    let botReply, confidenceTier, sources = [];
     const cached = history.length === 0 ? getCachedGuestAnswer(tenant, message) : null;
     if (cached) {
       botReply = cached.answer;
       confidenceTier = cached.confidenceTier;
+      sources = cached.sources || [];
     } else {
       try {
         const result = await getPythonBackendResponse(message, { sessionId, history, tenantSlug: tenant, branding: guestTenant.branding, ragConfig: guestTenant.ragConfig });
         botReply = result.answer;
         confidenceTier = result.confidenceTier;
+        sources = result.sources || [];
         logAiUsage(tenant, result.usage, "guest_chat");
         if (history.length === 0 && confidenceTier !== "low") {
-          setCachedGuestAnswer(tenant, message, botReply, confidenceTier);
+          setCachedGuestAnswer(tenant, message, botReply, confidenceTier, sources);
         }
       } catch (error) {
         console.error("Failed to get response from Python backend:", error.message);
@@ -376,8 +392,12 @@ export const guestTextChatController = async (req, res) => {
       type: "text",
       role: "assistant",
       content: botReply,
+      confidenceTier,
+      sources,
       timestamp: Date.now(),
     });
+    // Its position in the session: what answer feedback points at.
+    const answerIndex = session.messages.length - 1;
 
     // Save session
     guestSessions.set(sessionId, session);
@@ -389,6 +409,9 @@ export const guestTextChatController = async (req, res) => {
         type: "text",
         role: "assistant",
         content: botReply,
+        confidenceTier,
+        sources,
+        answerIndex,
         timestamp: Date.now(),
       },
       followUpChips,
@@ -458,11 +481,21 @@ export const getGuestChatHistory = async (req, res) => {
 // account." userController.js's verifyOtp reads the guest's pre-signup
 // messages with this, persists them, and only then calls
 // deleteGuestSession — so a failed Chat.create can't lose the transcript.
-export function peekGuestSessionMessages(sessionId) {
+export function peekGuestSessionMessages(sessionId, tenantSlug) {
   if (!sessionId) return [];
   const session = guestSessions.get(sessionId);
   if (!session) return [];
-  return session.messages;
+  if (tenantSlug && session.tenantSlug && session.tenantSlug !== tenantSlug) return [];
+  // In the shape of a student chat message; the guest's thumbs up/down was
+  // already recorded as guest feedback.
+  return session.messages.map(({ type, role, content, timestamp, confidenceTier, sources }) => ({
+    type,
+    role,
+    content,
+    timestamp,
+    confidenceTier: confidenceTier || null,
+    sources: sources?.length ? sources : undefined,
+  }));
 }
 
 // Deletes the in-memory session once migration succeeded, so the same
@@ -531,3 +564,49 @@ export default {
   clearGuestSession,
   getGuestBranding,
 };
+
+// POST /api/guest/feedback - { sessionId, answerIndex, helpful, tenant? }
+// A guest's thumbs up/down on an answer in their session. A thumbs-down
+// adds the question to the tenant's failed-question log as a guest gap
+// (Rev 5 section 19.7: what applicants want to know and can't find out).
+export const guestAnswerFeedback = async (req, res) => {
+  const { sessionId, answerIndex, helpful, tenant } = req.body || {};
+  if (typeof helpful !== "boolean" || !Number.isInteger(answerIndex) || typeof sessionId !== "string") {
+    return res.status(400).json({ success: false, message: "sessionId, answerIndex and helpful are required" });
+  }
+  const session = guestSessions.get(sessionId);
+  const answer = session?.messages?.[answerIndex];
+  if (!answer || answer.role !== "assistant") {
+    return res.status(404).json({ success: false, message: "Answer not found" });
+  }
+  try {
+    // The session knows which university it's on.
+    const guestTenant = await resolveActiveGuestTenant(session.tenantSlug || tenant);
+    if (!guestTenant) return res.status(404).json({ success: false, message: "University not available" });
+    const alreadyRated = typeof answer.feedback === "boolean";
+    answer.feedback = helpful;
+    const question = [...session.messages.slice(0, answerIndex)].reverse().find((m) => m.role === "user")?.content || "";
+    const models = getModelsForTenant(guestTenant);
+    if (!alreadyRated) {
+      await models.AnswerFeedback.create({
+        userType: "guest",
+        helpful,
+        question: question.slice(0, 1000),
+        confidenceTier: answer.confidenceTier || null,
+      });
+      if (!helpful && question) {
+        await models.FailedQuestion.create({
+          question: question.slice(0, 1000),
+          userType: "guest",
+          reason: "unhelpful",
+          answer: String(answer.content || "").slice(0, 1500),
+        });
+      }
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error("guestAnswerFeedback error:", error);
+    res.status(500).json({ success: false, message: "Failed to save feedback" });
+  }
+};
+

@@ -6,7 +6,8 @@ import {
   deleteChat, 
   updateChatName,
   clearChatMessages,
-  getChatStats 
+  getChatStats,
+  submitAnswerFeedback,
 } from '../controllers/chatController.js'
 import { protect } from '../middlewares/auth.js'
 
@@ -32,5 +33,8 @@ chatRouter.post('/clear', protect, clearChatMessages)
 
 // Get chat statistics
 chatRouter.get('/:chatId/stats', protect, getChatStats)
+
+// Thumbs up/down on one of the assistant's answers
+chatRouter.post('/:chatId/messages/:messageId/feedback', protect, submitAnswerFeedback)
 
 export default chatRouter

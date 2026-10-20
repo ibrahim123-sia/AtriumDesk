@@ -20,16 +20,36 @@ export const fetchAdminStats = createAsyncThunk(
   }
 );
 
+// How the chatbot is doing: answers, confidence, helpfulness, gaps.
+export const fetchAssistantInsights = createAsyncThunk(
+  "adminStats/assistant",
+  async (days = 30, { getState }) => {
+    try {
+      const { data } = await axios.get(`/api/admin/stats/assistant?days=${days}`, authHeader(getState));
+      return data;
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || "Failed to load assistant insights",
+      };
+    }
+  }
+);
+
 const adminStatsSlice = createSlice({
   name: "adminStats",
   initialState: {
     stats: null,
     loading: false,
     lastUpdated: null,
+    assistant: null,
   },
   reducers: {},
   extraReducers: (builder) => {
     builder
+      .addCase(fetchAssistantInsights.fulfilled, (state, action) => {
+        if (action.payload.success) state.assistant = action.payload;
+      })
       .addCase(fetchAdminStats.pending, (state) => {
         state.loading = true;
       })

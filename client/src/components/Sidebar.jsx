@@ -193,9 +193,9 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
 
   const handleNewChat = async () => {
     try {
+      // Refreshes the list and opens the new chat itself.
       const result = await dispatch(createNewChat()).unwrap();
       if (result.success) {
-        await dispatch(fetchUsersChats());
         navigate("/chat");
       } else {
         toast.error(result.message || "Failed to create new chat");
@@ -362,8 +362,9 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
                       <div className="flex items-center gap-2 mb-0.5">
                         <MessageSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "rgba(255,255,255,.5)" }} />
                         <p className="text-sm font-medium truncate text-white">
-                          {chat.messages?.[0]?.content?.slice(0, 30) ||
-                            chat.name ||
+                          {/* The server names a chat after its first question;
+                              a renamed chat keeps its new name. */}
+                          {(chat.name && chat.name !== "New Chat" ? chat.name : chat.messages?.[0]?.content?.slice(0, 30)) ||
                             "New Chat"}
                         </p>
                         {isLoading && (

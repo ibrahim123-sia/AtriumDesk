@@ -850,6 +850,7 @@ def ask(
         )
     chunks, sources, scores = _merge_search_results(result_sets, top_k)
     confidence_tier = compute_confidence_tier(scores[0] if scores else None, confidence_high, confidence_low)
+    faq_sources = list(sources)  # before listing context is appended
 
     # §8 Layer 4 — a separate, independently-thresholded context section
     # (see _retrieve_listing_context's own docstring for why this isn't
@@ -915,4 +916,19 @@ def ask(
     if cleaned.strip() == NO_INFO_FALLBACK.strip():
         confidence_tier = "low"
 
-    return {"answer": cleaned, "confidence_tier": confidence_tier}
+    return {"answer": cleaned, "confidence_tier": confidence_tier, "sources": _source_links(faq_sources, confidence_tier)}
+
+
+def _source_links(chunk_sources, confidence_tier, limit=3):
+    """The official pages behind a confident answer, so a student can check
+    them — shown by the client under the answer, never written into it (the
+    prompt still forbids citations in the text). Only website chunks carry a
+    URL; admin-written and uploaded-document chunks don't."""
+    if confidence_tier != "high":
+        return []
+    links = []
+    for meta in chunk_sources[: limit + 1]:
+        url = str((meta or {}).get("source", ""))
+        if url.startswith(("http://", "https://")) and url not in links:
+            links.append(url)
+    return links[:limit]

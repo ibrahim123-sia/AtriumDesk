@@ -10,7 +10,9 @@ import {
   MessageSquare,
   Flag,
   UserX,
+  Bot,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -21,7 +23,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import moment from "moment";
-import { fetchAdminStats } from "../../redux/slices/adminStatsSlice";
+import { fetchAdminStats, fetchAssistantInsights } from "../../redux/slices/adminStatsSlice";
 import StatCard from "../components/StatCard";
 import { getPalette } from "../utils/palette";
 
@@ -31,8 +33,12 @@ const Dashboard = () => {
   const dispatch = useDispatch();
   const theme = useSelector((s) => s.theme.theme);
   const tenantBranding = useSelector((s) => s.tenant.branding);
-  const { stats, loading } = useSelector((s) => s.adminStats);
+  const { stats, loading, assistant } = useSelector((s) => s.adminStats);
   const C = getPalette(theme === "dark", tenantBranding);
+
+  useEffect(() => {
+    dispatch(fetchAssistantInsights(30));
+  }, [dispatch]);
 
   useEffect(() => {
     dispatch(fetchAdminStats());
@@ -142,6 +148,8 @@ const Dashboard = () => {
         </div>
       </section>
 
+      {assistant && <AssistantInsights a={assistant} C={C} />}
+
       <section className="grid grid-cols-1 sm:grid-cols-4 gap-3">
         {["Pending", "In Progress", "Resolved", "Closed"].map((k) => (
           <div
@@ -159,6 +167,69 @@ const Dashboard = () => {
         ))}
       </section>
     </div>
+  );
+};
+
+const pct = (ratio) => (ratio === null || ratio === undefined ? "—" : `${Math.round(ratio * 100)}%`);
+
+// The figures a university judges the assistant on: how much it answers,
+// how sure it was, whether people found it helpful, what it couldn't answer.
+const AssistantInsights = ({ a, C }) => {
+  const confident = a.studentAnswers ? a.confidence.high / a.studentAnswers : null;
+  const metrics = [
+    {
+      label: "Questions answered",
+      value: a.studentAnswers + a.guestAnswers,
+      hint: `${a.studentAnswers} from students · ${a.guestAnswers} from guests`,
+    },
+    { label: "Answered confidently", value: pct(confident), hint: "students' questions with a strong match" },
+    {
+      label: "Rated helpful",
+      value: pct(a.feedback.helpfulRate),
+      hint: a.feedback.total ? `${a.feedback.total} rating${a.feedback.total === 1 ? "" : "s"}` : "no ratings yet",
+    },
+    { label: "Turned into a ticket", value: a.handoffs, hint: "chat handoffs to a department" },
+  ];
+  return (
+    <section className="rounded-xl border p-4" style={{ backgroundColor: C.surface, borderColor: C.border }}>
+      <div className="flex items-center justify-between mb-3 gap-3">
+        <h3 className="text-sm font-semibold inline-flex items-center gap-2" style={{ color: C.text }}>
+          <Bot className="w-4 h-4" style={{ color: C.navy }} /> Assistant — last {a.days} days
+        </h3>
+        <Link to="/admin/failed-questions" className="text-xs font-medium" style={{ color: C.navy }}>
+          {a.openGaps} open knowledge gap{a.openGaps === 1 ? "" : "s"} →
+        </Link>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {metrics.map((m) => (
+          <div key={m.label} className="rounded-lg border px-3 py-2.5" style={{ borderColor: C.border }}>
+            <p className="text-xs" style={{ color: C.muted }}>{m.label}</p>
+            <p className="text-xl font-bold" style={{ color: C.text }}>{m.value}</p>
+            <p className="text-[11px]" style={{ color: C.muted }}>{m.hint}</p>
+          </div>
+        ))}
+      </div>
+      {a.topGaps.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: C.muted }}>
+            Most-asked questions it couldn't answer well
+          </p>
+          <ul className="space-y-1.5">
+            {a.topGaps.map((g) => (
+              <li key={g.question} className="flex items-center justify-between gap-3 text-sm">
+                <span className="truncate" style={{ color: C.text }}>{g.question}</span>
+                <span
+                  className="px-2 py-0.5 text-xs rounded-full font-semibold shrink-0"
+                  style={{ backgroundColor: `${C.red}1A`, color: C.red }}
+                >
+                  {g.count}×
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 };
 

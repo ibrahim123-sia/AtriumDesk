@@ -54,14 +54,18 @@ def load_golden_set():
         return json.load(f)
 
 
-def ask(api_base, tenant_slug, question, history=None):
+def ask(api_base, tenant_slug, question, history=None, user_type=None):
+    body = {
+        "question": question,
+        "tenant_slug": tenant_slug,
+        "history": history or [],
+    }
+    # A case can say who's asking; without it /ask's default (guest) applies.
+    if user_type:
+        body["user_type"] = user_type
     resp = requests.post(
         f"{api_base}/ask",
-        json={
-            "question": question,
-            "tenant_slug": tenant_slug,
-            "history": history or [],
-        },
+        json=body,
         # /ask now requires the same internal-secret header every other
         # cross-service Python endpoint does (it used to be unauthenticated
         # and reachable by anyone who could hit port 8000 directly).
@@ -93,7 +97,7 @@ def score_answer(answer, expected_keywords=None, expect_no_info=False):
 
 
 def run_single_case(api_base, tenant_slug, case):
-    answer = ask(api_base, tenant_slug, case["question"])
+    answer = ask(api_base, tenant_slug, case["question"], user_type=case.get("user_type"))
     passed, matched, missed = score_answer(
         answer,
         expected_keywords=case.get("expected_keywords", []),
@@ -114,7 +118,7 @@ def run_sequence_case(api_base, tenant_slug, case):
     turn_results = []
     all_passed = True
     for i, turn in enumerate(case["turns"]):
-        answer = ask(api_base, tenant_slug, turn["question"], history=history)
+        answer = ask(api_base, tenant_slug, turn["question"], history=history, user_type=case.get("user_type"))
         passed, matched, missed = score_answer(
             answer,
             expected_keywords=turn.get("expected_keywords", []),

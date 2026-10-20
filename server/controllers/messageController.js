@@ -51,6 +51,7 @@ async function getPythonBackendResponse(question, context = {}) {
     return {
       answer: data.answer || "No response from Python backend",
       confidenceTier: data.confidence_tier || null,
+      sources: Array.isArray(data.sources) ? data.sources.slice(0, 3) : [],
       usage: data.usage || null,
     };
   } catch (error) {
@@ -260,9 +261,9 @@ export const textMessageController = async (req, res) => {
     await chat.save();
 
     // Get response from Python backend
-    let replyContent, confidenceTier, usage;
+    let replyContent, confidenceTier, usage, sources = [];
     try {
-      ({ answer: replyContent, confidenceTier, usage } = await getPythonBackendResponse(prompt, {
+      ({ answer: replyContent, confidenceTier, usage, sources } = await getPythonBackendResponse(prompt, {
         userId,
         chatId,
         history,
@@ -279,29 +280,27 @@ export const textMessageController = async (req, res) => {
     logIfFailedQuestion(req.models, { question: prompt, confidenceTier, userType: "student", userId });
     logAiUsage(req.models, usage, { userType: req.user.role, userId, endpoint: "chat" });
 
-    const reply = {
+    // First exchange names the chat after the question's first words.
+    if (chat.messages.filter((m) => m.role === "user").length === 1) {
+      chat.name = prompt.split(" ").slice(0, 5).join(" ") + (prompt.split(" ").length > 5 ? "..." : "");
+    }
+
+    // Save AI response — returned with its _id, which answer feedback needs.
+    chat.messages.push({
       type: "text",
       role: "assistant",
       content: replyContent,
       confidenceTier,
+      sources: sources?.length ? sources : undefined,
       timestamp: Date.now(),
-    };
-
-    // Save AI response
-    chat.messages.push(reply);
+    });
     await chat.save();
-
-    // Update chat title if this is the first real message
-    if (chat.messages.filter(m => m.role === "user").length === 1) {
-      // Use first 5 words of the question as title
-      const title = prompt.split(' ').slice(0, 5).join(' ') + (prompt.split(' ').length > 5 ? '...' : '');
-      chat.title = title;
-      await chat.save();
-    }
+    const reply = chat.messages[chat.messages.length - 1].toObject();
 
     res.json({
       success: true,
       reply,
+      chatName: chat.name,
       userMessage: userMessage,
       source: "python_backend"
     });
@@ -384,13 +383,13 @@ export const emailMessageController = async (req, res) => {
       timestamp: Date.now(),
     };
 
-    // Save AI response
+    // Save AI response — returned with its _id, which answer feedback needs.
     chat.messages.push(reply);
     await chat.save();
 
     res.json({
       success: true,
-      reply,
+      reply: chat.messages[chat.messages.length - 1].toObject(),
       userMessage: userMessage,
       source: "python_backend"
     });
@@ -517,9 +516,9 @@ export const voiceMessageController = async (req, res) => {
     chat.messages.push(userMessage);
 
     // Get response from Python backend
-    let aiResponse = "", confidenceTier = null, usage = null;
+    let aiResponse = "", confidenceTier = null, usage = null, sources = [];
     try {
-      ({ answer: aiResponse, confidenceTier, usage } = await getPythonBackendResponse(transcribedText, {
+      ({ answer: aiResponse, confidenceTier, usage, sources } = await getPythonBackendResponse(transcribedText, {
         userId,
         chatId,
         history,
@@ -534,28 +533,21 @@ export const voiceMessageController = async (req, res) => {
     logIfFailedQuestion(req.models, { question: transcribedText, confidenceTier, userType: "student", userId });
     logAiUsage(req.models, usage, { userType: req.user.role, userId, endpoint: "voice" });
 
-    const reply = {
+    if (chat.messages.filter((m) => m.role === "user" && !m.content.includes("[Processing")).length === 1) {
+      chat.name = transcribedText.split(" ").slice(0, 5).join(" ") + (transcribedText.split(" ").length > 5 ? "..." : "");
+    }
+
+    // Save AI response (with both messages in one save)
+    chat.messages.push({
       type: "text",
       role: "assistant",
       content: aiResponse,
       confidenceTier,
+      sources: sources?.length ? sources : undefined,
       timestamp: Date.now(),
-      isVoiceResponse: true,
-    };
-
-    // Save AI response
-    chat.messages.push(reply);
-    
-    // Save chat once with both messages
+    });
     await chat.save();
-
-    // Update chat title if this is the first real message
-    if (chat.messages.filter(m => m.role === "user" && !m.content.includes("[Processing")).length === 1) {
-      // Use first few words as title
-      chat.title = transcribedText.split(' ').slice(0, 5).join(' ') + (transcribedText.split(' ').length > 5 ? '...' : '');
-      await chat.save();
-    }
-
+    const reply = { ...chat.messages[chat.messages.length - 1].toObject(), isVoiceResponse: true };
 
     // Send response
     res.json({

@@ -12,7 +12,7 @@ import {
   importStudents,
 } from "../controllers/adminController.js";
 import { csvUpload, handleUploadError } from "../middlewares/upload.js";
-import { getAdminStats } from "../controllers/adminStatsController.js";
+import { getAdminStats, getAssistantInsights } from "../controllers/adminStatsController.js";
 import { getAdminHealth } from "../controllers/adminHealthController.js";
 import {
   listAllIssues,
@@ -85,6 +85,7 @@ router.use(protect, requireRole("admin", "staff"));
 router.use(auditAdminWrites);
 
 router.get("/stats", requireRole("admin"), getAdminStats);
+router.get("/stats/assistant", requireRole("admin"), getAssistantInsights);
 router.get("/health", requireRole("admin"), getAdminHealth);
 
 router.get("/issues", requireStaffPermission("query"), listAllIssues);

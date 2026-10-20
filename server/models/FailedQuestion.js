@@ -17,6 +17,10 @@ export const failedQuestionSchema = new mongoose.Schema(
     // Set once an admin has added content that should address this gap —
     // lets the admin view distinguish "still unresolved" from "handled".
     resolvedAt: { type: Date, default: null },
+    // Why it's here: the retrieval found nothing good (low_confidence), or
+    // the asker marked the answer unhelpful (with the answer they got).
+    reason: { type: String, enum: ["low_confidence", "unhelpful"], default: "low_confidence" },
+    answer: { type: String, default: "" },
   },
   { timestamps: true }
 );

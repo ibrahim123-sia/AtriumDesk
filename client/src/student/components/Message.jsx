@@ -1,11 +1,68 @@
 import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { User, Bot, Mail, Calendar, Image as ImageIcon, Volume2, Mic, MessageSquarePlus } from 'lucide-react';
+import { User, Bot, Mail, Calendar, Image as ImageIcon, Volume2, Mic, MessageSquarePlus, ThumbsUp, ThumbsDown, Link2 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import moment from 'moment';
 import toast from 'react-hot-toast';
 import { fetchDepartments } from '../../redux/slices/departmentSlice';
 import { fetchDepartmentSuggestion, createIssueFromChat } from '../../redux/slices/issueSlice';
+import { sendAnswerFeedback } from '../../redux/slices/chatSlice';
+
+// The answer itself tells the student to raise it with an office (Branch E
+// of the RAG prompt does this for personal issues) — offer the one-click
+// handoff right there instead of sending them to find the form.
+const SUGGESTS_TICKET = /\b(ticket|complaint|file a query|raise (it|this|an issue))\b/i;
+
+// Official pages behind a confident answer (never cited in the text itself).
+export const AnswerSources = ({ sources, color, linkColor }) =>
+  sources?.length ? (
+    <div className="text-xs mt-2 flex flex-wrap items-center gap-x-2 gap-y-1" style={{ color }}>
+      <span className="inline-flex items-center gap-1">
+        <Link2 className="w-3 h-3" /> Sources:
+      </span>
+      {sources.map((url) => {
+        let label = url;
+        try {
+          const u = new URL(url);
+          label = `${u.hostname.replace(/^www\./, '')}${u.pathname.length > 1 ? u.pathname.replace(/\/$/, '') : ''}`;
+        } catch { /* keep the raw URL */ }
+        return (
+          <a key={url} href={url} target="_blank" rel="noreferrer" className="underline truncate max-w-[220px]" style={{ color: linkColor }} title={url}>
+            {label}
+          </a>
+        );
+      })}
+    </div>
+  ) : null;
+
+// Was this answer helpful? A thumbs-down flags the question for the team
+// (failed-question log) and opens the handoff.
+export const AnswerFeedback = ({ value, onRate, color, activeColor }) => (
+  <div className="flex items-center gap-1" role="group" aria-label="Was this answer helpful?">
+    <button
+      type="button"
+      onClick={() => onRate(true)}
+      aria-pressed={value === true}
+      aria-label="Helpful"
+      title="Helpful"
+      className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/10"
+      style={{ color: value === true ? activeColor : color }}
+    >
+      <ThumbsUp className="w-3.5 h-3.5" fill={value === true ? 'currentColor' : 'none'} />
+    </button>
+    <button
+      type="button"
+      onClick={() => onRate(false)}
+      aria-pressed={value === false}
+      aria-label="Not helpful"
+      title="Not helpful"
+      className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/10"
+      style={{ color: value === false ? activeColor : color }}
+    >
+      <ThumbsDown className="w-3.5 h-3.5" fill={value === false ? 'currentColor' : 'none'} />
+    </button>
+  </div>
+);
 
 // Rev 5 §4.2 — low-confidence answers offer a one-click handoff to file an
 // issue, with the chat transcript attached automatically. Kept inline here
@@ -118,9 +175,23 @@ const HandoffPrompt = ({ chatId, question, isDark }) => {
 };
 
 const Message = ({ message, chatId, priorUserQuestion }) => {
+  const dispatch = useDispatch();
   const theme = useSelector((s) => s.theme.theme);
   const isUser = message.role === 'user';
   const isDark = theme === 'dark';
+  const helpful = message.feedback?.helpful;
+  const muted = isDark ? '#8FB0AA' : '#53716C';
+  const accent = isDark ? '#4E9128' : '#0D9488';
+  const offerHandoff =
+    !isUser && chatId && priorUserQuestion &&
+    (message.confidenceTier === 'low' || helpful === false || SUGGESTS_TICKET.test(message.content || ''));
+
+  const rate = async (value) => {
+    if (!message._id || helpful === value) return;
+    const result = await dispatch(sendAnswerFeedback({ chatId, messageId: message._id, helpful: value })).unwrap();
+    if (!result.success) toast.error(result.message);
+    else if (!value) toast('Thanks — this has been flagged so the answer can be improved.');
+  };
 
   return (
     <div className={`flex items-start gap-3 my-3 sm:my-4 ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -241,7 +312,9 @@ const Message = ({ message, chatId, priorUserQuestion }) => {
             </div>
           )}
 
-          {!isUser && message.confidenceTier === 'low' && chatId && priorUserQuestion && (
+          {!isUser && <AnswerSources sources={message.sources} color={muted} linkColor={accent} />}
+
+          {offerHandoff && (
             <HandoffPrompt chatId={chatId} question={priorUserQuestion} isDark={isDark} />
           )}
 
@@ -261,16 +334,19 @@ const Message = ({ message, chatId, priorUserQuestion }) => {
           )}
         </div>
 
-        {/* Timestamp */}
+        {/* Timestamp (+ answer feedback) */}
         <div
-          className="text-xs mt-3"
+          className="text-xs mt-3 flex items-center justify-between gap-3"
           style={{
             color: isUser
               ? 'rgba(255,255,255,0.7)'
               : isDark ? '#8FB0AA' : '#53716C',
           }}
         >
-          {moment(message.timestamp).format('h:mm A')}
+          <span>{moment(message.timestamp).format('h:mm A')}</span>
+          {!isUser && message._id && chatId && (
+            <AnswerFeedback value={helpful} onRate={rate} color={muted} activeColor={accent} />
+          )}
         </div>
       </div>
 

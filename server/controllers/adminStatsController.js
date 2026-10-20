@@ -87,3 +87,70 @@ export const getAdminStats = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to load stats" });
   }
 };
+
+// GET /api/admin/stats/assistant?days=30 — how the chatbot is doing: the
+// figures a university weighs the assistant on (questions handled without a
+// ticket, how often students found answers helpful, where the knowledge
+// base has gaps).
+export const getAssistantInsights = async (req, res) => {
+  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 1), 365);
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  try {
+    const [byTier, guestAnswers, feedback, handoffs, openGaps, topGaps] = await Promise.all([
+      // Student answers by retrieval confidence (chat messages are embedded).
+      req.models.Chat.aggregate([
+        { $match: { updatedAt: { $gte: since } } },
+        { $unwind: "$messages" },
+        { $match: { "messages.role": "assistant", "messages.timestamp": { $gte: since.getTime() } } },
+        { $group: { _id: "$messages.confidenceTier", count: { $sum: 1 } } },
+      ]),
+      // Guest sessions live in memory, so the usage log is the record of
+      // their answers (cached repeats aren't counted).
+      req.models.AiUsageLog.countDocuments({ endpoint: "guest_chat", createdAt: { $gte: since } }),
+      req.models.AnswerFeedback.aggregate([
+        { $match: { createdAt: { $gte: since } } },
+        { $group: { _id: { userType: "$userType", helpful: "$helpful" }, count: { $sum: 1 } } },
+      ]),
+      req.models.Issue.countDocuments({ category: "chatbot_handoff", createdAt: { $gte: since } }),
+      req.models.FailedQuestion.countDocuments({ resolvedAt: null }),
+      req.models.FailedQuestion.aggregate([
+        { $match: { resolvedAt: null, createdAt: { $gte: since } } },
+        { $group: { _id: { $trim: { input: { $toLower: "$question" } } }, question: { $first: "$question" }, count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+      ]),
+    ]);
+
+    const tiers = { high: 0, medium: 0, low: 0, unknown: 0 };
+    for (const row of byTier) tiers[row._id || "unknown"] = (tiers[row._id || "unknown"] || 0) + row.count;
+    const studentAnswers = tiers.high + tiers.medium + tiers.low + tiers.unknown;
+
+    const votes = { helpful: 0, unhelpful: 0, guestHelpful: 0, guestUnhelpful: 0 };
+    for (const row of feedback) {
+      const guest = row._id.userType === "guest";
+      const key = row._id.helpful ? (guest ? "guestHelpful" : "helpful") : guest ? "guestUnhelpful" : "unhelpful";
+      votes[key] += row.count;
+    }
+    const totalVotes = votes.helpful + votes.unhelpful + votes.guestHelpful + votes.guestUnhelpful;
+
+    res.json({
+      success: true,
+      days,
+      studentAnswers,
+      guestAnswers,
+      confidence: tiers,
+      // Chats a student turned into a ticket to a department.
+      handoffs,
+      feedback: {
+        ...votes,
+        total: totalVotes,
+        helpfulRate: totalVotes ? (votes.helpful + votes.guestHelpful) / totalVotes : null,
+      },
+      openGaps,
+      topGaps: topGaps.map((g) => ({ question: g.question, count: g.count })),
+    });
+  } catch (error) {
+    console.error("getAssistantInsights error:", error);
+    res.status(500).json({ success: false, message: "Failed to load assistant insights" });
+  }
+};

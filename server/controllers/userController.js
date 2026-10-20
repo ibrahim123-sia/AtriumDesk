@@ -591,7 +591,7 @@ export const verifyOtp = async (req, res) => {
     // no longer lose the transcript.
     if (req.body.guestSessionId) {
       try {
-        const guestMessages = peekGuestSessionMessages(req.body.guestSessionId);
+        const guestMessages = peekGuestSessionMessages(req.body.guestSessionId, tenant.slug);
         if (guestMessages.length > 0) {
           await models.Chat.create({
             userId: user._id,

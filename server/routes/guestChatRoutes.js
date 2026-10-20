@@ -6,6 +6,7 @@ import {
   getGuestBranding,
   guestChatLimiter,
   guestSessionLimiter,
+  guestAnswerFeedback,
 } from "../controllers/guestChatController.js";
 import { getGuestListings } from "../controllers/guestListingController.js";
 import { listGuestActivityTabs, getGuestActivityTab } from "../controllers/guestActivityController.js";
@@ -17,6 +18,7 @@ router.get("/branding", guestSessionLimiter, getGuestBranding); // Tenant brandi
 router.post("/chat", guestChatLimiter, guestTextChatController); // Send message
 router.get("/history", guestSessionLimiter, getGuestChatHistory); // Get chat history
 router.post("/clear", guestSessionLimiter, clearGuestSession); // Clear session
+router.post("/feedback", guestSessionLimiter, guestAnswerFeedback); // Thumbs up/down on an answer
 
 // Rev5 §19.2 — MAJU's own scholarships + upcoming campus events, for the
 // guest landing page's admissions-funnel sections below the chatbot.

@@ -122,6 +122,21 @@
           "notes": "CGPA eligibility is sometimes summarized out of this broad follow-up (verified by re-running) — CNIC is the one document consistently present across repeat runs, so it's the stable regression signal for 'did the follow-up retrieve admission-requirement content at all'."
         }
       ]
+    },
+    {
+      "id": "guest-scholarships-coverage",
+      "type": "single",
+      "user_type": "guest",
+      "question": "What scholarships does the university offer and how much do they cover?",
+      "expected_keywords": ["Merit", "100%"],
+      "notes": "A prospective applicant asking about the university's own scholarships (Rev 5 section 19.2: internal scholarships are in a guest's scope). This exact wording got the no-info reply for guests while students got the answer, 3 out of 3 runs, before the guest scope line was clarified."
+    },
+    {
+      "id": "student-scholarships-coverage",
+      "type": "single",
+      "user_type": "student",
+      "question": "What scholarships does the university offer and how much do they cover?",
+      "expected_keywords": ["Merit", "100%"]
     }
   ]
 }

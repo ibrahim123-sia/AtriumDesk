@@ -1,12 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
+import Markdown from "react-markdown";
 import {
   sendGuestMessage,
+  sendGuestFeedback,
   clearGuestSession,
   fetchGuestListings,
   fetchGuestBranding,
 } from "../redux/slices/guestSlice";
+import { AnswerSources, AnswerFeedback } from "../student/components/Message";
 import { toggleTheme as toggleThemeAction } from "../redux/slices/themeSlice";
 import GuestSidebar from "./GuestSidebar";
 import {
@@ -29,6 +32,7 @@ const GuestChat = () => {
   const guestMessages = useSelector((s) => s.guest.guestMessages);
   const guestSessionId = useSelector((s) => s.guest.guestSessionId);
   const followUpChips = useSelector((s) => s.guest.followUpChips);
+  const messagesRemaining = useSelector((s) => s.guest.messagesRemaining);
   const listings = useSelector((s) => s.guest.listings);
   const tenantBranding = useSelector((s) => s.tenant.branding);
   const universityShort = tenantBranding?.universityShort || "your university";
@@ -160,7 +164,18 @@ const GuestChat = () => {
     sender: msg.role === "user" ? "user" : "bot",
     timestamp: msg.timestamp || Date.now(),
     type: msg.type || "text",
+    sources: msg.sources,
+    answerIndex: msg.answerIndex,
+    feedback: msg.feedback,
   }));
+
+  const rateAnswer = async (answerIndex, helpful) => {
+    const result = await dispatch(sendGuestFeedback({ answerIndex, helpful })).unwrap();
+    if (!result.success) toast.error(result.message);
+    else if (!helpful) toast("Thanks — we've passed this on so the answer can be improved.");
+  };
+  const muted = theme === "dark" ? "#8FB0AA" : "#53716C";
+  const accent = theme === "dark" ? "#4E9128" : "#0D9488";
 
   return (
     <div
@@ -384,9 +399,17 @@ const GuestChat = () => {
                     {message.sender === "bot" && (
                       <Brain className="w-4 h-4 text-[#0D9488] dark:text-[#4E9128] mt-0.5 shrink-0" />
                     )}
-                    <p className="text-sm md:text-base wrap-break-words whitespace-pre-wrap">
-                      {message.text}
-                    </p>
+                    {message.sender === "bot" ? (
+                      // Answers come back as markdown (bold figures, lists).
+                      <div className="text-sm md:text-base wrap-break-words min-w-0 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1">
+                        <Markdown>{message.text}</Markdown>
+                        <AnswerSources sources={message.sources} color={muted} linkColor={accent} />
+                      </div>
+                    ) : (
+                      <p className="text-sm md:text-base wrap-break-words whitespace-pre-wrap">
+                        {message.text}
+                      </p>
+                    )}
                   </div>
                   <p
                     className={`text-xs mt-2 ${
@@ -402,9 +425,37 @@ const GuestChat = () => {
                       minute: "2-digit",
                     })}
                   </p>
+                  {message.sender === "bot" && Number.isInteger(message.answerIndex) && (
+                    <div className="flex justify-end -mt-5">
+                      <AnswerFeedback
+                        value={message.feedback}
+                        onRate={(helpful) => message.feedback !== helpful && rateAnswer(message.answerIndex, helpful)}
+                        color={muted}
+                        activeColor={accent}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
+
+            {/* Nearing the guest-session cap: say so before it's hit */}
+            {!sessionCapped && typeof messagesRemaining === "number" && messagesRemaining <= 5 && (
+              <div
+                className="mb-3 px-3 py-2 rounded-lg text-xs flex items-center justify-between gap-3"
+                style={{ backgroundColor: `${accent}14`, color: theme === "dark" ? "#E8F5F2" : "#0F2E2A" }}
+              >
+                <span>
+                  {messagesRemaining === 0
+                    ? "That was the last question in this guest chat."
+                    : `${messagesRemaining} question${messagesRemaining === 1 ? "" : "s"} left in this guest chat.`}{" "}
+                  Register free to keep chatting.
+                </span>
+                <button onClick={() => navigate("/register")} className="font-semibold underline shrink-0" style={{ color: accent }}>
+                  Register
+                </button>
+              </div>
+            )}
 
             {/* Rev5 §19.3 — context-aware follow-up chips on the latest answer */}
             {!isLoading && followUpChips.length > 0 && (

@@ -24,6 +24,7 @@ export const listFailedQuestions = async (req, res) => {
 
     const rows = await req.models.FailedQuestion.aggregate([
       { $match: match },
+      { $sort: { createdAt: 1 } },
       {
         $addFields: {
           normalized: {
@@ -40,6 +41,10 @@ export const listFailedQuestions = async (req, res) => {
           firstAskedAt: { $min: "$createdAt" },
           resolvedCount: { $sum: { $cond: [{ $ne: ["$resolvedAt", null] }, 1, 0] } },
           ids: { $push: "$_id" },
+          // low_confidence (nothing good found) and/or unhelpful (the asker
+          // said the answer didn't help — with the latest such answer).
+          reasons: { $addToSet: { $ifNull: ["$reason", "low_confidence"] } },
+          lastAnswer: { $last: { $cond: [{ $gt: [{ $strLenCP: { $ifNull: ["$answer", ""] } }, 0] }, "$answer", null] } },
         },
       },
       { $sort: { count: -1, lastAskedAt: -1 } },
@@ -56,6 +61,8 @@ export const listFailedQuestions = async (req, res) => {
         firstAskedAt: r.firstAskedAt,
         isResolved: r.resolvedCount === r.count,
         ids: r.ids,
+        reasons: r.reasons,
+        lastAnswer: r.lastAnswer || null,
       })),
     });
   } catch (error) {

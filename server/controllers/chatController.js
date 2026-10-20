@@ -185,3 +185,58 @@ export const getChatStats = async (req, res) => {
     res.json({ success: false, message: error.message });
   }
 };
+
+// POST /api/chat/:chatId/messages/:messageId/feedback - { helpful }
+// A student's thumbs up/down on one of the assistant's answers in their own
+// chat. Recorded for the admin's helpfulness figures; a thumbs-down also
+// puts the question in the failed-question log with the answer they got,
+// so the knowledge-base gap gets fixed (Rev 5 section 4.3's improvement loop).
+export const submitAnswerFeedback = async (req, res) => {
+  const { chatId, messageId } = req.params;
+  const { helpful } = req.body || {};
+  if (typeof helpful !== "boolean") {
+    return res.status(400).json({ success: false, message: "helpful must be true or false" });
+  }
+  try {
+    const chat = await req.models.Chat.findOne({ _id: chatId, userId: req.user._id });
+    if (!chat) return res.status(404).json({ success: false, message: "Chat not found" });
+    const index = chat.messages.findIndex((m) => String(m._id) === String(messageId));
+    const message = chat.messages[index];
+    if (!message || message.role !== "assistant") {
+      return res.status(404).json({ success: false, message: "Answer not found" });
+    }
+    const alreadyRated = typeof message.feedback?.helpful === "boolean";
+    const question = [...chat.messages.slice(0, index)].reverse().find((m) => m.role === "user")?.content || "";
+
+    message.feedback = { helpful, at: new Date() };
+    await chat.save();
+
+    // One record per answer: changing your mind updates it.
+    await req.models.AnswerFeedback.findOneAndUpdate(
+      { chatId: chat._id, messageId: message._id },
+      {
+        userType: "student",
+        userId: req.user._id,
+        chatId: chat._id,
+        messageId: message._id,
+        helpful,
+        question: question.slice(0, 1000),
+        confidenceTier: message.confidenceTier || null,
+      },
+      { upsert: true, setDefaultsOnInsert: true }
+    );
+    if (!helpful && !alreadyRated && question) {
+      await req.models.FailedQuestion.create({
+        question: question.slice(0, 1000),
+        userType: "student",
+        userId: req.user._id,
+        reason: "unhelpful",
+        answer: String(message.content || "").slice(0, 1500),
+      });
+    }
+    res.json({ success: true, feedback: message.feedback });
+  } catch (error) {
+    console.error("submitAnswerFeedback error:", error);
+    res.status(500).json({ success: false, message: "Failed to save feedback" });
+  }
+};

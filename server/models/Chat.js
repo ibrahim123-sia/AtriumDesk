@@ -38,6 +38,13 @@ export const chatSchema = new mongoose.Schema(
           enum: ["high", "medium", "low", null],
           default: null,
         },
+        // Official pages behind a confident answer, shown under it.
+        sources: { type: [String], default: undefined },
+        // The student's thumbs up/down on this answer.
+        feedback: {
+          helpful: { type: Boolean, default: undefined },
+          at: { type: Date, default: undefined },
+        },
         emailData: {
           recipient: String,
           subject: String,

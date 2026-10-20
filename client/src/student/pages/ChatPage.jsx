@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import axios from "../../utils/axios";
+import { appendMessages } from "../../redux/slices/chatSlice";
 import Message from "../components/Message";
 import toast from "react-hot-toast";
 import {
@@ -18,8 +19,12 @@ import {
 } from "lucide-react";
 
 const ChatPage = () => {
+  const dispatch = useDispatch();
   const containRef = useRef(null);
   const selectedChat = useSelector((s) => s.chat.selectedChat);
+  // The chat on screen — a reply that arrives after switching chats must
+  // not land in the newly opened one.
+  const activeChatIdRef = useRef(selectedChat?._id);
   const theme = useSelector((s) => s.theme.theme);
   const user = useSelector((s) => s.auth.user);
   const token = useSelector((s) => s.auth.token);
@@ -39,6 +44,8 @@ const ChatPage = () => {
   // Refs for audio management
   const recordingTimeRef = useRef(0);
   const audioChunksRef = useRef([]);
+  // Set by Cancel so the recorder's onstop throws the audio away.
+  const cancelledRef = useRef(false);
 
   // Clean up audio resources on unmount
   useEffect(() => {
@@ -129,10 +136,21 @@ const ChatPage = () => {
       };
 
       recorder.onstop = async () => {
+        // However it stopped (Send, Cancel or the 30 s limit), recording is over.
+        setIsRecording(false);
         // Stop timer
         if (timerRef.current) {
           clearInterval(timerRef.current);
           timerRef.current = null;
+        }
+
+        if (cancelledRef.current) {
+          cancelledRef.current = false;
+          stream.getTracks().forEach((track) => track.stop());
+          audioChunksRef.current = [];
+          setRecordingTime(0);
+          recordingTimeRef.current = 0;
+          return;
         }
 
         const audioBlob = new Blob(audioChunksRef.current, {
@@ -177,6 +195,7 @@ const ChatPage = () => {
       };
 
       // Start recording
+      cancelledRef.current = false;
       recorder.start(100);
       setMediaRecorder(recorder);
       setIsRecording(true);
@@ -199,7 +218,7 @@ const ChatPage = () => {
 
           if (recorder && recorder.state === "recording") {
             recorder.stop();
-            toast.info("Recording stopped automatically after 30 seconds.");
+            toast("Recording stopped automatically after 30 seconds.");
           }
         }
       }, 1000);
@@ -232,14 +251,15 @@ const ChatPage = () => {
 
   // Cancel recording
   const cancelRecording = () => {
-    if (mediaRecorder && isRecording && mediaRecorder.state === "recording") {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      cancelledRef.current = true;
       try {
         mediaRecorder.stop();
-        setIsRecording(false);
       } catch (error) {
         console.error("Error canceling recording:", error);
       }
     }
+    setIsRecording(false);
 
     // Clean up all resources
     cleanupAudioResources();
@@ -247,7 +267,7 @@ const ChatPage = () => {
     // Reset
     setRecordingTime(0);
     recordingTimeRef.current = 0;
-    toast.info("Recording cancelled");
+    toast("Recording cancelled");
   };
 
   // User request — voice used to transcribe AND auto-send in one shot, with
@@ -367,6 +387,7 @@ const ChatPage = () => {
   };
 
   useEffect(() => {
+    activeChatIdRef.current = selectedChat?._id;
     if (selectedChat) {
       setMessages(selectedChat.messages || []);
     } else {
@@ -441,22 +462,23 @@ const ChatPage = () => {
       });
     }
 
+    const sentChatId = selectedChat._id;
     try {
       const { data } = await axios.post(
         `/api/message/${mode}`,
         {
-          chatId: selectedChat._id,
+          chatId: sentChatId,
           prompt: trimmed,
         },
         { headers: { Authorization: token } }
       );
 
       if (data.success) {
-        const reply = {
-          ...data.reply,
-          timestamp: Date.now(),
-        };
-        setMessages((prev) => [...prev, reply]);
+        const reply = { ...data.reply, timestamp: data.reply?.timestamp || Date.now() };
+        // Into the store (survives navigating away; ChatPage re-renders
+        // from it), named after the first question like the server does.
+        dispatch(appendMessages({ chatId: sentChatId, messages: [userMsg, reply], chatName: data.chatName }));
+        if (activeChatIdRef.current !== sentChatId) return;
       } else {
         toast.error(data.message);
         // Roll back: remove the optimistic message and restore the input.

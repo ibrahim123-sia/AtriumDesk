@@ -265,6 +265,8 @@ class AnswerResponse(BaseModel):
     language: Optional[str] = None
     # Rev 5 §4.2's three-tier confidence, from rag.py's merged search score.
     confidence_tier: Optional[str] = None
+    # Official pages behind a confident answer (rag._source_links).
+    sources: List[str] = []
     # Super Admin Usage tab — token/request accounting for the LLM call this
     # answer actually made, or None for a cache hit / moderation-flagged
     # reply (neither calls the LLM).
@@ -352,6 +354,7 @@ def ask_question(request: QuestionRequest):
         answer=result["answer"],
         flagged=False,
         confidence_tier=result["confidence_tier"],
+        sources=result.get("sources") or [],
         usage=rag.get_last_usage(),
     )
 

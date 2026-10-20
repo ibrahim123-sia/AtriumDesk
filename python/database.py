@@ -118,6 +118,30 @@ def get_collection(client, collection_name=None):
 # BUILD - Creating the vector database from chunks
 # =============================================================
 
+# Website-import chunks are "chunk_<n>"; everything else (admin_*, doc_*)
+# was added by hand and survives a rebuild.
+WEBSITE_CHUNK_PREFIX = "chunk_"
+
+
+def _manual_chunks(client, name):
+    empty = {"ids": [], "documents": [], "metadatas": [], "embeddings": []}
+    try:
+        existing = client.get_collection(name=name)
+    except Exception:
+        return empty
+    data = existing.get(include=["documents", "metadatas", "embeddings"])
+    keep = [i for i, cid in enumerate(data.get("ids") or []) if not str(cid).startswith(WEBSITE_CHUNK_PREFIX)]
+    if not keep:
+        return empty
+    embeddings = data.get("embeddings")
+    return {
+        "ids": [data["ids"][i] for i in keep],
+        "documents": [data["documents"][i] for i in keep],
+        "metadatas": [data["metadatas"][i] for i in keep],
+        "embeddings": [[float(x) for x in embeddings[i]] for i in keep],
+    }
+
+
 def build_database(collection_name=None, chunks=None):
     """
     Build the vector database from scraped chunks.
@@ -153,6 +177,11 @@ def build_database(collection_name=None, chunks=None):
     print("\nSetting up ChromaDB...")
     client = get_chroma_client()
 
+    # Chunks admins added by hand (the Data page, document uploads, answered
+    # failed questions) live in the same collection as the website import,
+    # with their own id prefixes; a rebuild replaces only the website ones.
+    preserved = _manual_chunks(client, name)
+
     # Delete old collection if it exists, then create a fresh one
     try:
         client.delete_collection(name=name)
@@ -162,6 +191,16 @@ def build_database(collection_name=None, chunks=None):
 
     collection = client.create_collection(name=name)
     print(f"  Created new collection: '{name}'")
+    if preserved["ids"]:
+        for start in range(0, len(preserved["ids"]), 500):
+            end = start + 500
+            collection.add(
+                ids=preserved["ids"][start:end],
+                documents=preserved["documents"][start:end],
+                metadatas=preserved["metadatas"][start:end],
+                embeddings=preserved["embeddings"][start:end],
+            )
+        print(f"  Kept {len(preserved['ids'])} admin-added chunks")
 
     # Step 3: Load the embedding model
     print("\nLoading embedding model...")
