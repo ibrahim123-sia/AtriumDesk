@@ -8,3 +8,15 @@ export const startOfToday = (now = new Date()) => {
   day.setHours(0, 0, 0, 0);
   return day;
 };
+
+// The calendar date (YYYY-MM-DD) in the university's time zone — e.g. which
+// day a walk-in queue ticket belongs to. An unknown zone falls back to the
+// server's own.
+export const localDayKey = (date = new Date(), timeZone) => {
+  const format = (zone) => new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+  try {
+    return format(timeZone || undefined);
+  } catch {
+    return format(undefined);
+  }
+};

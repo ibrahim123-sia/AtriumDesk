@@ -14,7 +14,7 @@ const DELETED_EMAIL = "deleted-account";
 export const exportMyData = async (req, res) => {
   try {
     const userId = req.user._id;
-    const [account, chats, issues, saved, notifications, answerRatings, eventRsvps, searchAlerts] = await Promise.all([
+    const [account, chats, issues, saved, notifications, answerRatings, eventRsvps, searchAlerts, queueVisits] = await Promise.all([
       req.models.User.findById(userId).populate("department", "code name").lean(),
       req.models.Chat.find({ userId }).sort({ createdAt: 1 }).lean(),
       req.models.Issue.find({ studentId: userId }).populate("department", "code name").sort({ createdAt: 1 }).lean(),
@@ -25,6 +25,7 @@ export const exportMyData = async (req, res) => {
       req.models.AnswerFeedback.find({ userId }).lean(),
       req.models.EventRsvp.find({ userId }).populate("eventId", "title date location").lean(),
       req.models.SavedSearch.find({ userId }).lean(),
+      req.models.QueueTicket.find({ studentId: userId }).populate("department", "code name").select("-studentEmail").lean(),
     ]);
     if (!account) return res.status(404).json({ success: false, message: "Account not found" });
     delete account.__v;
@@ -43,6 +44,7 @@ export const exportMyData = async (req, res) => {
       answerRatings,
       eventRsvps,
       searchAlerts,
+      queueVisits,
     });
   } catch (error) {
     console.error("exportMyData error:", error);
@@ -92,6 +94,12 @@ export const deleteMyAccount = async (req, res) => {
       req.models.EventRsvp.deleteMany({ userId }),
       req.models.SavedSearch.deleteMany({ userId }),
       req.models.PushSubscription.deleteMany({ userId }),
+      // Kept for the office's daily numbers, without who it was.
+      req.models.QueueTicket.updateMany(
+        { studentId: userId },
+        { $set: { studentName: DELETED_NAME, studentEmail: DELETED_EMAIL, reason: "" } }
+      ),
+      req.models.QueueTicket.updateMany({ studentId: userId, status: { $in: ["waiting", "called"] } }, { $set: { status: "cancelled" } }),
       req.models.FailedQuestion.updateMany({ userId }, { $set: { userId: null } }),
       req.models.AiUsageLog.updateMany({ userId }, { $set: { userId: null } }),
       req.models.LoginEvent.updateMany({ userId }, { $set: { email: DELETED_EMAIL } }),

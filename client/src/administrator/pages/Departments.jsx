@@ -30,7 +30,7 @@ const Departments = () => {
   const [form, setForm] = useState({ code: "", name: "", description: "" });
   // The department being edited (modal), its form, and its staff for "head".
   const [editing, setEditing] = useState(null);
-  const [editForm, setEditForm] = useState({ name: "", description: "", slaThresholdHours: "", headUserId: "" });
+  const [editForm, setEditForm] = useState({ name: "", description: "", slaThresholdHours: "", headUserId: "", walkInEnabled: false, walkInNote: "" });
   const [deptStaff, setDeptStaff] = useState([]);
   const token = useSelector((s) => s.auth.token);
   const [confirmDeactivate, setConfirmDeactivate] = useState(null);
@@ -63,6 +63,8 @@ const Departments = () => {
       description: d.description || "",
       slaThresholdHours: d.slaThresholdHours ?? "",
       headUserId: d.headUserId?._id || d.headUserId || "",
+      walkInEnabled: !!d.walkInEnabled,
+      walkInNote: d.walkInNote || "",
     });
     setDeptStaff([]);
     try {
@@ -85,6 +87,8 @@ const Departments = () => {
         description: editForm.description,
         slaThresholdHours: editForm.slaThresholdHours === "" ? null : Number(editForm.slaThresholdHours),
         headUserId: editForm.headUserId || null,
+        walkInEnabled: editForm.walkInEnabled,
+        walkInNote: editForm.walkInNote,
       })
     ).unwrap();
     if (result.success) {
@@ -394,6 +398,38 @@ const Departments = () => {
             <p className="text-xs mt-1" style={{ color: C.muted }}>
               The department head is told about overdue issues; administrators always are.
             </p>
+          </div>
+          <div className="pt-3 border-t space-y-2" style={{ borderColor: C.border }}>
+            <label className="flex items-start gap-2 text-sm" style={{ color: C.text }}>
+              <input
+                type="checkbox"
+                checked={editForm.walkInEnabled}
+                onChange={(e) => setEditForm({ ...editForm, walkInEnabled: e.target.checked })}
+                className="mt-0.5"
+              />
+              <span>
+                Take walk-ins through the app
+                <span className="block text-xs" style={{ color: C.muted }}>
+                  Students join this office's queue from their phone; staff open it and call the next person from Walk-in Queue.
+                </span>
+              </span>
+            </label>
+            {editForm.walkInEnabled && (
+              <div>
+                <label htmlFor="dept-walkin-note" className="block text-xs font-medium mb-1" style={{ color: C.muted }}>
+                  Where to go (shown to students)
+                </label>
+                <input
+                  id="dept-walkin-note"
+                  value={editForm.walkInNote}
+                  onChange={(e) => setEditForm({ ...editForm, walkInNote: e.target.value })}
+                  maxLength={200}
+                  placeholder="e.g. Ground floor, Block A — Mon–Fri 9 am to 4 pm"
+                  className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none"
+                  style={{ backgroundColor: C.input, borderColor: C.border, color: C.text }}
+                />
+              </div>
+            )}
           </div>
         </form>
       </AdminModal>

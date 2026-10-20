@@ -36,7 +36,7 @@ export const createDepartment = async (req, res) => {
 
 export const updateDepartment = async (req, res) => {
   const { id } = req.params;
-  const { name, description, isActive, headUserId } = req.body;
+  const { name, description, isActive, headUserId, walkInEnabled, walkInNote } = req.body;
   // null/"" = back to the platform default (48 hours).
   let { slaThresholdHours } = req.body;
   if (slaThresholdHours === "") slaThresholdHours = null;
@@ -62,6 +62,11 @@ export const updateDepartment = async (req, res) => {
       dept.headUserId = headUserId || null;
     }
     if (slaThresholdHours !== undefined) dept.slaThresholdHours = slaThresholdHours;
+    if (walkInEnabled !== undefined) {
+      dept.walkInEnabled = !!walkInEnabled;
+      if (!dept.walkInEnabled) dept.walkInOpen = false;
+    }
+    if (walkInNote !== undefined) dept.walkInNote = String(walkInNote || "").trim().slice(0, 200);
     await dept.save();
     await dept.populate("headUserId", "name email");
     res.json({ success: true, department: dept });

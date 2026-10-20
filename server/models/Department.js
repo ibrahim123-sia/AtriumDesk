@@ -37,6 +37,12 @@ export const departmentSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    // Walk-in queue (controllers/queueController.js): the Administrator
+    // decides whether this office uses it; staff open and close it day to
+    // day. The note tells students where to go.
+    walkInEnabled: { type: Boolean, default: false },
+    walkInOpen: { type: Boolean, default: false },
+    walkInNote: { type: String, trim: true, maxlength: 200, default: "" },
   },
   { timestamps: true }
 );

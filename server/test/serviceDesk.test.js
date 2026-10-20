@@ -35,6 +35,8 @@ const { deleteListing } = await import("../controllers/adminListingController.js
 const { default: webpush } = await import("web-push");
 const { subscribePush, unsubscribePush } = await import("../controllers/pushController.js");
 const { notify } = await import("../services/notify.js");
+const queue = await import("../controllers/queueController.js");
+const { updateDepartment } = await import("../controllers/departmentController.js");
 
 const DB = "test_service_desk";
 const SLUG = "test-service-desk";
@@ -494,5 +496,69 @@ test("notifications reach the devices someone turned them on for; bad endpoints 
   } finally {
     sendMock.mock.restore();
   }
+});
+
+test("walk-in queue: places in order, call next tells the student and whoever is next", async () => {
+  const password = await bcrypt.hash("Secret123", 10);
+  const [q1, q2, q3] = await Promise.all(
+    [1, 2, 3].map((n) => models.User.create({ name: `Walk-in ${n}`, email: `walkin-${n}@sdtest.invalid`, password, role: "student", isVerified: true }))
+  );
+  const deptParams = { id: String(deptA._id) };
+
+  // Not set up yet: no office listed, joining refused.
+  assert.equal((await call(queue.listQueueDepartments, { user: q1 })).body.departments.length, 0);
+  assert.equal((await call(queue.joinQueue, { user: q1, body: { departmentId: String(deptA._id) } })).statusCode, 404);
+  assert.equal((await call(queue.setQueueOpen, { user: staffA, body: { open: true } })).statusCode, 400);
+
+  // The Administrator turns it on; staff open it.
+  await call(updateDepartment, { user: staffA, params: deptParams, body: { walkInEnabled: true, walkInNote: "Counter 3, ground floor" } });
+  assert.equal((await call(queue.joinQueue, { user: q1, body: { departmentId: String(deptA._id) } })).statusCode, 400, "closed for now");
+  assert.equal((await call(queue.setQueueOpen, { user: staffA, body: { open: true } })).body.walkInOpen, true);
+
+  const t1 = await call(queue.joinQueue, { user: q1, body: { departmentId: String(deptA._id), reason: "Fee challan" } });
+  const t2 = await call(queue.joinQueue, { user: q2, body: { departmentId: String(deptA._id) } });
+  const t3 = await call(queue.joinQueue, { user: q3, body: { departmentId: String(deptA._id) } });
+  assert.equal(t1.statusCode, 201);
+  assert.equal(t1.body.ticket.label, "FIN-001");
+  assert.equal(t3.body.ticket.label, "FIN-003");
+  assert.equal(t3.body.ticket.ahead, 2);
+  assert.equal(t3.body.ticket.estimatedWaitMinutes, 10);
+  assert.equal((await call(queue.joinQueue, { user: q1, body: { departmentId: String(deptA._id) } })).statusCode, 400, "one queue at a time");
+
+  const listed = await call(queue.listQueueDepartments, { user: q1 });
+  assert.equal(listed.body.departments[0].waiting, 3);
+  assert.equal(listed.body.departments[0].walkInNote, "Counter 3, ground floor");
+
+  // Staff call the next person: q1, who is told; q2 hears they're next.
+  const called = await call(queue.callNextInQueue, { user: staffA, body: { counter: "Counter 3" } });
+  assert.equal(called.body.ticket.label, "FIN-001");
+  await settle();
+  assert.ok(await models.Notification.exists({ userId: q1._id, type: "queue_update", message: /your turn at Finance.*Counter 3/ }));
+  assert.ok(await models.Notification.exists({ userId: q2._id, type: "queue_update", message: /You're next at Finance/ }));
+  assert.equal(await models.Notification.countDocuments({ userId: q3._id, type: "queue_update" }), 0);
+  const mine2 = await call(queue.myQueueTickets, { user: q2 });
+  assert.equal(mine2.body.tickets[0].ahead, 0);
+
+  // Another department's staff can't touch it.
+  assert.equal((await call(queue.markQueueServed, { user: staffB, params: { id: String(called.body.ticket._id) } })).statusCode, 404);
+  assert.equal((await call(queue.markQueueServed, { user: staffA, params: { id: String(called.body.ticket._id) } })).body.ticket.status, "served");
+
+  // q2 leaves; calling next skips to q3. A no-show is recorded.
+  assert.equal((await call(queue.leaveQueue, { user: q2, params: { id: String(t2.body.ticket._id) } })).statusCode, 200);
+  const third = await call(queue.callNextInQueue, { user: staffA, body: {} });
+  assert.equal(third.body.ticket.label, "FIN-003");
+  assert.equal((await call(queue.markQueueNoShow, { user: staffA, params: { id: String(third.body.ticket._id) } })).body.ticket.status, "no_show");
+  assert.equal((await call(queue.callNextInQueue, { user: staffA, body: {} })).body.ticket, null);
+
+  const board = await call(queue.getDepartmentQueue, { user: staffA });
+  assert.deepEqual(
+    { served: board.body.stats.served, noShow: board.body.stats.noShow, cancelled: board.body.stats.cancelled },
+    { served: 1, noShow: 1, cancelled: 1 }
+  );
+
+  // Turning walk-ins off for the department also closes the queue.
+  await call(updateDepartment, { user: staffA, params: deptParams, body: { walkInEnabled: false } });
+  const dept = await models.Department.findById(deptA._id);
+  assert.equal(dept.walkInOpen, false);
 });
 

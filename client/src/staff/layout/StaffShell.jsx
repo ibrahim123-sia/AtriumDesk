@@ -10,6 +10,7 @@ import { brandInitials, safeLogoUrl } from "../../utils/branding";
 const BASE_NAV = [
   { to: "/staff/dashboard", label: "Dashboard" },
   { to: "/staff/issues", label: "Department Inbox" },
+  { to: "/staff/queue", label: "Walk-in Queue" },
 ];
 
 // User request — a staff member only sees the tabs for admin features an

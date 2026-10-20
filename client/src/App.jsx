@@ -44,11 +44,13 @@ const Scholarship = lazy(() => import("./student/pages/Scholarship"));
 const ScholarshipDetail = lazy(() => import("./student/pages/ScholarshipDetail"));
 const Profile = lazy(() => import("./profile/Profile"));
 const Saved = lazy(() => import("./student/pages/Saved"));
+const Queue = lazy(() => import("./student/pages/Queue"));
 
 const StaffShell = lazy(() => import("./staff/layout/StaffShell"));
 const StaffIssues = lazy(() => import("./staff/pages/StaffIssues"));
 const StaffIssueDetail = lazy(() => import("./staff/pages/StaffIssueDetail"));
 const StaffDashboard = lazy(() => import("./staff/pages/StaffDashboard"));
+const StaffQueue = lazy(() => import("./staff/pages/StaffQueue"));
 
 const AdminShell = lazy(() => import("./administrator/layout/AdminShell"));
 const AdminDashboard = lazy(() => import("./administrator/pages/Dashboard"));
@@ -259,6 +261,11 @@ const App = () => {
               <Saved />
             </ProtectedRoute>
           } />
+          <Route path="queue" element={
+            <ProtectedRoute roles={["student"]}>
+              <Queue />
+            </ProtectedRoute>
+          } />
           {/* Universal — every authenticated role manages their own profile */}
           <Route path="profile" element={<Profile />} />
         </Route>
@@ -273,6 +280,7 @@ const App = () => {
           <Route path="dashboard" element={<StaffDashboard />} />
           <Route path="issues" element={<StaffIssues />} />
           <Route path="issues/:id" element={<StaffIssueDetail />} />
+          <Route path="queue" element={<StaffQueue />} />
           <Route path="profile" element={<Profile />} />
           {/* User request — delegated admin capabilities (User.staffPermissions).
               Reuses the exact same page components AdminShell mounts under

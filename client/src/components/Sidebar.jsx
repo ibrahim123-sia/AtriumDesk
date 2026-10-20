@@ -26,6 +26,7 @@ import {
   Calendar,
   GraduationCap,
   Bookmark,
+  Ticket,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import moment from "moment";
@@ -91,6 +92,16 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
   const isDark = theme === "dark";
 
   const C = getPalette(isDark, tenantBranding);
+
+  // "Office queue" only shows once some office takes walk-ins through the app.
+  const [hasQueues, setHasQueues] = useState(false);
+  useEffect(() => {
+    if (!token || user?.role !== "student") return;
+    axios
+      .get("/api/queue/departments", { headers: { Authorization: token } })
+      .then(({ data }) => setHasQueues((data.departments || []).length > 0))
+      .catch(() => {});
+  }, [token, user?.role]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -470,6 +481,9 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
             requireFeature.js). */}
         <div className="p-1.5 border-t space-y-1" style={{ borderColor: "rgba(255,255,255,.15)" }}>
           <NavItem pathname={location.pathname} to="/issues" icon={<AlertCircle className="w-4 h-4" />} label="My Issues" />
+          {hasQueues && (
+            <NavItem pathname={location.pathname} to="/queue" icon={<Ticket className="w-4 h-4" />} label="Office queue" />
+          )}
           {tenantBranding?.enabledFeatures?.scholarships !== false && (
             <NavItem pathname={location.pathname} to="/scholarships" icon={<GraduationCap className="w-4 h-4" />} label="Scholarships" />
           )}

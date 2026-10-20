@@ -21,6 +21,7 @@ export const notificationSchema = new mongoose.Schema(
         "listing_deadline_reminder",
         "listing_digest",
         "listing_saved_change",
+        "queue_update",
       ],
       required: true,
     },
