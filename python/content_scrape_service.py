@@ -27,6 +27,7 @@ import requests
 
 import config
 import database
+import kb_snapshot
 import rag
 import scraper
 from url_safety import validate_redirect_chain, UnsafeUrlError
@@ -126,7 +127,10 @@ def run_tenant_content_scrape(tenant_slug, sitemap_url, allowed_domain, base_url
 
         print(f"[content-scrape:{tenant_slug}] {len(all_chunks)} chunks built, embedding...")
         collection_name = config.get_collection_name(tenant_slug)
-        count = database.build_database(collection_name=collection_name, chunks=all_chunks)
+        # Held for the whole rebuild so the R2 snapshot (kb_snapshot.py)
+        # never copies a half-rebuilt collection.
+        with kb_snapshot.writing():
+            count = database.build_database(collection_name=collection_name, chunks=all_chunks)
 
         # Free the keyword-search cache for this tenant — otherwise a
         # student's next question keeps matching the OLD content until the

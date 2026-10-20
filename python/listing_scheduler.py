@@ -89,10 +89,33 @@ async def poll_and_process():
             await _report(source_id, tenant_slug, {"success": False, "error": f"Unexpected error: {exc}"})
 
 
+_running = False
+
+
+def is_running():
+    return _running
+
+
+async def poll_once():
+    """One poll cycle, skipped if one is already running. Used by the loop
+    below and by POST /internal/poll-sources (on Cloudflare the loop is off
+    — the container sleeps when idle — and Node's hourly jobs trigger a poll
+    only when a source is due)."""
+    global _running
+    if _running:
+        return False
+    _running = True
+    try:
+        await poll_and_process()
+    finally:
+        _running = False
+    return True
+
+
 async def scheduler_loop(interval_seconds=POLL_INTERVAL_SECONDS):
     while True:
         try:
-            await poll_and_process()
+            await poll_once()
         except Exception as exc:
             print(f"  listing_scheduler: poll cycle failed: {exc}")
         await asyncio.sleep(interval_seconds)

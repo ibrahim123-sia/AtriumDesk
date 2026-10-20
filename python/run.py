@@ -14,6 +14,7 @@ COMMANDS:
   python run.py server      Start the FastAPI server
   python run.py ask "..."   Ask a single question (for testing)
   python run.py test        Run sample test questions
+  python run.py push-kb     Upload the local knowledge base to R2 (Cloudflare)
 
 TYPICAL WORKFLOW (first time setup):
   1. python run.py scrape   (scrape all websites)
@@ -43,6 +44,7 @@ def print_help():
     print("  server     Start the FastAPI server (port 8000)")
     print("  ask \"...\"  Ask a question (for testing)")
     print("  test       Run sample test questions")
+    print("  push-kb    Upload the local knowledge base to R2 (Cloudflare deploy)")
     print()
     print("Examples:")
     print("  python run.py scrape")
@@ -91,6 +93,20 @@ def cmd_ask(question):
     print("-" * 60)
     result = rag.ask(question)
     print(f"\nAnswer ({result['confidence_tier']} confidence):\n{result['answer']}")
+
+
+def cmd_push_kb():
+    """Upload the local chroma_db/ to R2 as the knowledge-base snapshot the
+    Cloudflare AI service restores on startup (kb_snapshot.py). One-time, to
+    seed a new deployment with a knowledge base built locally. Needs R2_* set
+    (python/.env or the environment)."""
+    import kb_snapshot  # R2 snapshot of chroma_db/
+
+    if not kb_snapshot.enabled():
+        print("R2 is not configured: set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET.")
+        sys.exit(1)
+    if not kb_snapshot.snapshot():
+        sys.exit(1)
 
 
 def cmd_test():
@@ -145,6 +161,8 @@ if __name__ == "__main__":
         cmd_ask(question)
     elif command == "test":
         cmd_test()
+    elif command == "push-kb":
+        cmd_push_kb()
     else:
         print(f"Unknown command: '{command}'")
         print()

@@ -34,6 +34,7 @@ import io             # For byte stream management during file uploads
 import re             # For regular expression operations in validation
 import uuid           # For generating unique identifiers for document records
 import tempfile       # For creating temporary files during audio transcription
+import threading      # Guards the background-job counter reported by /health
 import hmac           # For constant-time secret comparison (verify_internal_secret)
 from typing import Optional, List  # For type hinting in API request models
 
@@ -49,6 +50,7 @@ from dotenv import load_dotenv  # For loading variables from .env into environme
 import config         # Application configurations and global settings
 import rag            # Retrieval Augmented Generation pipeline
 import database       # ChromaDB operations and search queries
+import kb_snapshot    # ChromaDB snapshot in Cloudflare R2 (ephemeral container disk)
 from moderation import check_message  # Urdu and English abuse detection filter
 from transcribe import transcribe_audio  # Local Whisper speech-to-text transcription
 
@@ -66,13 +68,69 @@ app = FastAPI(
 
 
 @app.on_event("startup")
+def _restore_knowledge_base():
+    """Cloudflare containers start on a blank disk: bring the knowledge base
+    back from R2 before anything opens ChromaDB, then keep saving it after
+    changes (no-ops without R2 settings — see kb_snapshot.py). Registered
+    first, so it runs before the other startup hooks."""
+    kb_snapshot.restore()
+    kb_snapshot.start()
+
+
+@app.on_event("startup")
 async def _start_listing_scheduler():
     """Rev 5 §9.3 recurring-source polling — a background asyncio task, not
-    a separate process, so it shares this server's lifecycle."""
+    a separate process, so it shares this server's lifecycle.
+    DISABLE_SCHEDULERS=true turns it off (Cloudflare: the container sleeps
+    when idle, so Node's hourly jobs call POST /internal/poll-sources when a
+    source is due instead)."""
     import asyncio
     import listing_scheduler
 
+    if os.getenv("DISABLE_SCHEDULERS", "").strip().lower() == "true":
+        print("Listing scheduler disabled (DISABLE_SCHEDULERS=true) — polls run via POST /internal/poll-sources")
+        return
     asyncio.create_task(listing_scheduler.scheduler_loop())
+
+
+@app.on_event("shutdown")
+def _save_knowledge_base():
+    # The container gets SIGTERM before it sleeps: save unsaved changes.
+    kb_snapshot.flush()
+
+
+# Requests that write to ChromaDB. Each one runs inside kb_snapshot.writing(),
+# so the R2 snapshot never copies the store mid-write and is taken again
+# once writes go quiet. (A tenant's full site re-import writes from a
+# background task — content_scrape_service wraps that itself.)
+KB_WRITE_PATHS = ("/chunks", "/documents", "/listings/embed")
+
+
+@app.middleware("http")
+async def _track_kb_writes(request, call_next):
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.url.path.startswith(KB_WRITE_PATHS):
+        with kb_snapshot.writing():
+            return await call_next(request)
+    return await call_next(request)
+
+
+# Background work with no request attached (a site re-import, a source
+# poll). /health reports it as `busy` so the Cloudflare Worker doesn't put
+# the container to sleep half-way through.
+_background_jobs = 0
+_background_lock = threading.Lock()
+_poll_task = None  # keeps the running poll task referenced (asyncio holds only weak refs)
+
+
+def _run_tracked(fn, *args):
+    global _background_jobs
+    with _background_lock:
+        _background_jobs += 1
+    try:
+        fn(*args)
+    finally:
+        with _background_lock:
+            _background_jobs -= 1
 
 # CORS — allow Vite dev client (5173) and any extra origin via env
 default_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
@@ -311,7 +369,7 @@ async def moderation_check(body: ModerationBody):
 # forwarding the file. Same trust posture as /ask and /transcribe: Python
 # trusts Node as the gatekeeper for this call rather than re-checking a JWT.
 
-@app.post("/cv/parse")
+@app.post("/cv/parse", dependencies=[Depends(verify_internal_secret)])
 async def cv_parse(file: UploadFile = File(...)):
     content = await file.read()
     if not content:
@@ -333,8 +391,36 @@ async def cv_parse(file: UploadFile = File(...)):
 # /SCRAPE — Rev 5 §9.2/§9.3 source scraping (Scholarships/Jobs/Events)
 # =============================================================
 
+@app.get("/health")
+def health():
+    """Cheap liveness probe (the Cloudflare Worker's container ping) — no
+    models, no LLM, no secret. `busy` is true while a site re-import or a
+    source poll runs in the background, so the Worker keeps the container
+    awake until it finishes."""
+    import listing_scheduler
+
+    return {"status": "ok", "busy": _background_jobs > 0 or listing_scheduler.is_running()}
+
+
+@app.post("/internal/poll-sources", dependencies=[Depends(verify_internal_secret)])
+async def poll_sources_endpoint():
+    """One recurring-source poll (ask Node what's due -> scrape -> report),
+    started in the background. Node calls this from its scheduled jobs when
+    the in-process loop is off (DISABLE_SCHEDULERS)."""
+    import asyncio
+    import listing_scheduler
+
+    global _poll_task
+    if listing_scheduler.is_running():
+        return {"success": True, "message": "A poll is already running"}
+    _poll_task = asyncio.create_task(listing_scheduler.poll_once())
+    return {"success": True, "message": "Poll started"}
+
+
 @app.post("/internal/backup-chroma", dependencies=[Depends(verify_internal_secret)])
-async def backup_chroma_endpoint():
+def backup_chroma_endpoint():
+    # Sync on purpose: zipping (and uploading to R2) blocks; Starlette runs
+    # a plain def in its threadpool instead of on the event loop.
     import backup_chroma
 
     result = backup_chroma.create_backup()
@@ -373,6 +459,7 @@ def scrape_site_endpoint(request: ScrapeSiteRequest, background_tasks: Backgroun
     import content_scrape_service
 
     background_tasks.add_task(
+        _run_tracked,
         content_scrape_service.run_tenant_content_scrape,
         request.tenant_slug,
         request.sitemap_url,
@@ -465,7 +552,7 @@ async def explain_match_endpoint(request: ExplainMatchRequest):
 # /TRANSCRIBE — Local speech-to-text (replaces AssemblyAI)
 # =============================================================
 
-@app.post("/transcribe")
+@app.post("/transcribe", dependencies=[Depends(verify_internal_secret)])
 async def transcribe(
     file: UploadFile = File(...),
     language: Optional[str] = Form("en"),

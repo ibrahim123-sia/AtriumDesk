@@ -24,6 +24,7 @@ HOW IT WORKS:
 
 import json           # For loading and parsing chunks and saving collection metadata
 import os             # For handling database and metadata file paths
+import threading      # Guards creation of the shared Chroma client
 import chromadb       # The vector database client library for similarity search
 from sentence_transformers import SentenceTransformer  # For generating text embeddings locally
 from tqdm import tqdm  # For displaying progress bars during database build
@@ -36,27 +37,40 @@ import config         # Local application configuration parameters
 # INITIALIZATION - Setting up the database and model
 # =============================================================
 
+_client = None         # (path, client): one shared client per process
+_client_lock = threading.Lock()
+
+
 def get_chroma_client():
     """
-    Create a ChromaDB client that saves data to disk.
+    Return the ChromaDB client that saves data to disk.
 
     ChromaDB has two APIs (old and new). We try the modern one first
     and fall back to the legacy one for compatibility.
 
+    The client is created once and shared: two requests opening it at the
+    same moment (the admin panel loads several lists at once) can make
+    Chroma fail with "Could not connect to tenant default_tenant".
+
     Returns:
         A ChromaDB client connected to the local database folder
     """
-    try:
-        # Modern API (ChromaDB >= 0.4.0)
-        client = chromadb.PersistentClient(path=config.CHROMA_DB_PATH)
-    except AttributeError:
-        # Legacy API (older ChromaDB versions)
-        client = chromadb.Client(
-            settings=chromadb.config.Settings(
-                persist_directory=config.CHROMA_DB_PATH
+    global _client
+    with _client_lock:
+        if _client is not None and _client[0] == config.CHROMA_DB_PATH:
+            return _client[1]
+        try:
+            # Modern API (ChromaDB >= 0.4.0)
+            client = chromadb.PersistentClient(path=config.CHROMA_DB_PATH)
+        except AttributeError:
+            # Legacy API (older ChromaDB versions)
+            client = chromadb.Client(
+                settings=chromadb.config.Settings(
+                    persist_directory=config.CHROMA_DB_PATH
+                )
             )
-        )
-    return client
+        _client = (config.CHROMA_DB_PATH, client)
+        return client
 
 
 def get_embedding_model():
