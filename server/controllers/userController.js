@@ -1117,6 +1117,17 @@ export const updateProfileDetails = async (req, res) => {
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
     if (core && typeof core === "object") {
+      // A student picks their own department (events in it are ranked
+      // first); a staff member's department is set by the administrator.
+      if (core.departmentId !== undefined && user.role === "student") {
+        if (core.departmentId) {
+          const dept = await req.models.Department.findOne({ _id: core.departmentId, isActive: true });
+          if (!dept) return res.status(400).json({ success: false, message: "Choose one of the university's departments" });
+          user.department = dept._id;
+        } else {
+          user.department = null;
+        }
+      }
       if (core.degreeProgram !== undefined) user.profile.core.degreeProgram = String(core.degreeProgram).trim();
       for (const field of CORE_NUMERIC_FIELDS) {
         if (core[field] !== undefined) {

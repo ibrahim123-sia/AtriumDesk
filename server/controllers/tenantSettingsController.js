@@ -11,6 +11,19 @@ import { findRedosRisk } from "../services/regexSafety.js";
 // Super Admin / provisioning concerns, not branding.
 const EDITABLE_BRANDING_FIELDS = ["universityName", "universityShort", "logoUrl", "primaryColor", "supportEmail"];
 
+// Starter questions: up to 6, one line each, no duplicates.
+const STARTER_LIST_FIELDS = ["guestStarterQuestions", "studentStarterQuestions"];
+const MAX_STARTERS = 6;
+const cleanStarters = (value) => {
+  const lines = Array.isArray(value) ? value : String(value || "").split(/\r?\n/);
+  const out = [];
+  for (const line of lines) {
+    const text = String(line).replace(/\s+/g, " ").trim().slice(0, 140);
+    if (text && !out.some((q) => q.toLowerCase() === text.toLowerCase())) out.push(text);
+  }
+  return out.slice(0, MAX_STARTERS);
+};
+
 // Similarity-score thresholds live on 0-1; topK is a positive chunk count.
 // Same admin-self-service tier as branding — not a Super Admin concern —
 // since it only affects this tenant's own chatbot answer quality, never
@@ -64,6 +77,12 @@ export const updateTenantSettings = async (req, res) => {
     if (branding && typeof branding === "object") {
       for (const key of EDITABLE_BRANDING_FIELDS) {
         if (branding[key] !== undefined) tenant.branding[key] = String(branding[key]).trim();
+      }
+      for (const key of STARTER_LIST_FIELDS) {
+        if (branding[key] !== undefined) {
+          const list = cleanStarters(branding[key]);
+          tenant.branding[key] = list.length ? list : undefined;
+        }
       }
     }
 

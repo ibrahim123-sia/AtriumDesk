@@ -69,6 +69,32 @@ export const sendAnswerFeedback = createAsyncThunk(
   }
 );
 
+// Rename one of the student's chats.
+export const renameChat = createAsyncThunk(
+  "chat/rename",
+  async ({ chatId, name }, { getState }) => {
+    try {
+      const { data } = await axios.put("/api/chat/rename", { chatId, name }, authHeader(getState));
+      return data.success ? { success: true, chatId, name: data.chat.name } : { success: false, message: data.message };
+    } catch (error) {
+      return { success: false, message: error.response?.data?.message || "Couldn't rename the chat" };
+    }
+  }
+);
+
+// Empty a chat's messages, keeping the chat.
+export const clearChat = createAsyncThunk(
+  "chat/clear",
+  async ({ chatId }, { getState }) => {
+    try {
+      const { data } = await axios.post("/api/chat/clear", { chatId }, authHeader(getState));
+      return data.success ? { success: true, chatId } : { success: false, message: data.message };
+    } catch (error) {
+      return { success: false, message: error.response?.data?.message || "Couldn't clear the chat" };
+    }
+  }
+);
+
 export const deleteChat = createAsyncThunk(
   "chat/delete",
   async ({ chatId }, { getState, dispatch }) => {
@@ -140,6 +166,16 @@ const chatSlice = createSlice({
         const created = action.payload.success && action.payload.chat;
         if (!created) return;
         state.selectedChat = state.chats.find((c) => c._id === created._id) || created;
+      })
+      .addCase(renameChat.fulfilled, (state, action) => {
+        if (!action.payload.success) return;
+        const { chatId, name } = action.payload;
+        for (const chat of [...state.chats, state.selectedChat]) if (chat?._id === chatId) chat.name = name;
+      })
+      .addCase(clearChat.fulfilled, (state, action) => {
+        if (!action.payload.success) return;
+        const { chatId } = action.payload;
+        for (const chat of [...state.chats, state.selectedChat]) if (chat?._id === chatId) chat.messages = [];
       })
       .addCase(sendAnswerFeedback.fulfilled, (state, action) => {
         if (!action.payload.success) return;

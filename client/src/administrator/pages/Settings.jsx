@@ -6,6 +6,7 @@ import { fetchTenantSettings, updateTenantSettings } from "../../redux/slices/te
 import { getPalette } from "../utils/palette";
 import StudentEmailPatternBuilder from "../components/StudentEmailPatternBuilder";
 import ShareAssistant from "../components/ShareAssistant";
+import { defaultStarterQuestions } from "../../utils/starterQuestions";
 
 // Defined at module scope, not inside Settings — a component declared
 // inside another component's body is a new function identity every render,
@@ -33,6 +34,8 @@ const emptyForm = {
   logoUrl: "",
   primaryColor: "",
   supportEmail: "",
+  guestStarterQuestions: "",
+  studentStarterQuestions: "",
   emailDomains: "",
   staffEmailDomainPattern: "",
   studentEmailPattern: "",
@@ -69,6 +72,8 @@ const Settings = () => {
       logoUrl: settings.branding?.logoUrl || "",
       primaryColor: settings.branding?.primaryColor || "",
       supportEmail: settings.branding?.supportEmail || "",
+      guestStarterQuestions: (settings.branding?.guestStarterQuestions || []).join("\n"),
+      studentStarterQuestions: (settings.branding?.studentStarterQuestions || []).join("\n"),
       emailDomains: (settings.emailDomains || []).join(", "),
       staffEmailDomainPattern: settings.staffEmailDomainPattern || "",
       studentEmailPattern: settings.studentEmailPattern || "",
@@ -98,6 +103,9 @@ const Settings = () => {
         logoUrl: form.logoUrl,
         primaryColor: form.primaryColor,
         supportEmail: form.supportEmail,
+        // One question per line; empty = the default set.
+        guestStarterQuestions: form.guestStarterQuestions,
+        studentStarterQuestions: form.studentStarterQuestions,
       },
       emailDomains: form.emailDomains
         .split(",")
@@ -215,6 +223,36 @@ const Settings = () => {
             value={form.supportEmail}
             onChange={handleChange("supportEmail")}
             placeholder="support@youruniversity.edu"
+            className={inputClass}
+            style={inputStyle}
+          />
+        </Field>
+
+        <Field
+          C={C}
+          label="Starter questions — applicants (guest chat)"
+          hint='One per line, up to 6. Shown as "try asking" buttons. Leave empty for the default set (shown greyed out).'
+        >
+          <textarea
+            value={form.guestStarterQuestions}
+            onChange={handleChange("guestStarterQuestions")}
+            placeholder={defaultStarterQuestions(form.universityShort ? { universityShort: form.universityShort } : tenantBranding).join("\n")}
+            rows={5}
+            className={inputClass}
+            style={inputStyle}
+          />
+        </Field>
+
+        <Field
+          C={C}
+          label="Starter questions — students (chat)"
+          hint="One per line, up to 6. Leave empty for the default set."
+        >
+          <textarea
+            value={form.studentStarterQuestions}
+            onChange={handleChange("studentStarterQuestions")}
+            placeholder={defaultStarterQuestions(form.universityShort ? { universityShort: form.universityShort } : tenantBranding).join("\n")}
+            rows={5}
             className={inputClass}
             style={inputStyle}
           />

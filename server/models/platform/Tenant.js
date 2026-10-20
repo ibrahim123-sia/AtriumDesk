@@ -61,6 +61,10 @@ const tenantSchema = new mongoose.Schema(
       logoUrl: { type: String, default: "" },
       primaryColor: { type: String, default: "" },
       supportEmail: { type: String, default: "" },
+      // The "try asking" questions on the guest and student chat screens.
+      // Empty = the platform's default set (client/src/utils/starterQuestions.js).
+      guestStarterQuestions: { type: [String], default: undefined },
+      studentStarterQuestions: { type: [String], default: undefined },
     },
     // Semester fee calculator (guest-facing Scholarships tab) — a single
     // flat per-credit-hour rate. Real fee structures can be more layered

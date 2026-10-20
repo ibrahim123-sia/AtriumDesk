@@ -105,7 +105,7 @@ export const getAssistantInsights = async (req, res) => {
         { $group: { _id: "$messages.confidenceTier", count: { $sum: 1 } } },
       ]),
       // Guest sessions live in memory, so the usage log is the record of
-      // their answers (cached repeats aren't counted).
+      // their answers (cached repeats are logged with provider "cache").
       req.models.AiUsageLog.countDocuments({ endpoint: "guest_chat", createdAt: { $gte: since } }),
       req.models.AnswerFeedback.aggregate([
         { $match: { createdAt: { $gte: since }, context: { $ne: "issue_form" } } },

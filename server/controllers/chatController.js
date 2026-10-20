@@ -88,9 +88,10 @@ export const deleteChat = async (req, res) => {
 export const updateChatName = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { chatId, name } = req.body;
+    const { chatId } = req.body;
+    const name = typeof req.body.name === "string" ? req.body.name.replace(/\s+/g, " ").trim().slice(0, 80) : "";
 
-    if (!name || name.trim() === '') {
+    if (!name) {
       return res.status(400).json({ 
         success: false, 
         message: "Chat name is required" 
@@ -99,7 +100,7 @@ export const updateChatName = async (req, res) => {
 
     const chat = await req.models.Chat.findOneAndUpdate(
       { _id: chatId, userId },
-      { name: name.trim() },
+      { name },
       { new: true, runValidators: true }
     );
 

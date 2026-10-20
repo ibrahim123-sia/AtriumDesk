@@ -374,6 +374,9 @@ export const guestTextChatController = async (req, res) => {
       botReply = cached.answer;
       confidenceTier = cached.confidenceTier;
       sources = cached.sources || [];
+      // Counted like any guest answer (the assistant card, the usage tab's
+      // "cache" row) — but no model call, so no tokens.
+      logAiUsage(tenantSlug, { provider: "cache", model: "", promptTokens: 0, completionTokens: 0, totalTokens: 0 }, "guest_chat");
     } else {
       try {
         const result = await getPythonBackendResponse(message, { sessionId, history, tenantSlug, branding: guestTenant.branding, ragConfig: guestTenant.ragConfig });

@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
 import axios from "../../utils/axios";
-import { appendMessages } from "../../redux/slices/chatSlice";
+import { appendMessages, clearChat } from "../../redux/slices/chatSlice";
+import { starterQuestionsFor } from "../../utils/starterQuestions";
 import Message from "../components/Message";
 import toast from "react-hot-toast";
 import {
@@ -16,7 +17,11 @@ import {
   MessageSquare,
   Sparkles,
   Mic,
+  Eraser,
 } from "lucide-react";
+
+// Icons cycle through the starter questions (whatever the university wrote).
+const STARTER_ICONS = [Wallet, Users, Building, Book, Sparkles, MessageSquare];
 
 const ChatPage = () => {
   const dispatch = useDispatch();
@@ -404,29 +409,20 @@ const ChatPage = () => {
     }
   }, [messages]);
 
+  // Two-step "clear conversation" (no browser dialog).
+  const [confirmClear, setConfirmClear] = useState(false);
+  useEffect(() => setConfirmClear(false), [selectedChat?._id]);
+  const onClearChat = async () => {
+    setConfirmClear(false);
+    const result = await dispatch(clearChat({ chatId: selectedChat._id })).unwrap();
+    if (!result.success) toast.error(result.message);
+  };
+
   const uniShort = tenantBranding?.universityShort || "your university";
-  const suggestedTopics = [
-    {
-      icon: <Wallet className="w-4 h-4" />,
-      text: "What is the fee structure for the Bachelor programs?",
-    },
-    {
-      icon: <Users className="w-4 h-4" />,
-      text: "What documents are required at the time of admission?",
-    },
-    {
-      icon: <Building className="w-4 h-4" />,
-      text: `Is ${uniShort} recognized by H.E.C?`,
-    },
-    {
-      icon: <Book className="w-4 h-4" />,
-      text: `In which areas does ${uniShort} offer degrees?`,
-    },
-    {
-      icon: <Sparkles className="w-4 h-4" />,
-      text: `Does ${uniShort} offer any scholarships?`,
-    },
-  ];
+  const suggestedTopics = starterQuestionsFor(tenantBranding, "student").map((text, i) => {
+    const Icon = STARTER_ICONS[i % STARTER_ICONS.length];
+    return { icon: <Icon className="w-4 h-4" />, text };
+  });
 
   const handleTextSubmit = async (e) => {
     e.preventDefault();
@@ -508,6 +504,25 @@ const ChatPage = () => {
     >
       {/* Chat Container */}
       <div className="flex-1 flex flex-col py-4 md:py-6 overflow-hidden">
+        {selectedChat && messages.length > 0 && (
+          <div className="w-full max-w-4xl mx-auto px-4 md:px-6 flex justify-end mb-1 text-xs">
+            {confirmClear ? (
+              <span className="inline-flex items-center gap-2" style={{ color: theme === "dark" ? "#8FB0AA" : "#53716C" }}>
+                Clear every message in this chat?
+                <button onClick={onClearChat} className="font-semibold text-[#A6362B] hover:underline">Clear</button>
+                <button onClick={() => setConfirmClear(false)} className="hover:underline">Cancel</button>
+              </span>
+            ) : (
+              <button
+                onClick={() => setConfirmClear(true)}
+                className="inline-flex items-center gap-1 hover:underline"
+                style={{ color: theme === "dark" ? "#8FB0AA" : "#53716C" }}
+              >
+                <Eraser className="w-3.5 h-3.5" /> Clear conversation
+              </button>
+            )}
+          </div>
+        )}
         {/* Welcome Message when no chats */}
         {messages.length === 0 && !selectedChat && (
           <div className="w-full max-w-4xl mx-auto px-4 md:px-6">
@@ -525,7 +540,7 @@ const ChatPage = () => {
               </div>
               <div className="flex-1 text-center md:text-left">
                 <h2 className="text-lg font-bold text-[#0F2E2A] dark:text-[#E8F5F2] mb-2">
-                  Welcome to AtriumDesk!
+                  {tenantBranding?.universityShort ? `Welcome to ${tenantBranding.universityShort}!` : "Welcome!"}
                 </h2>
                 <p
                   className={`text-sm ${

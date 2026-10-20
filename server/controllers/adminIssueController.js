@@ -193,7 +193,9 @@ export const getAdminIssue = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({ success: false, message: "Invalid id" });
     }
+    // Staff-side view: includes the department's internal notes.
     const issue = await req.models.Issue.findById(req.params.id)
+      .select("+internalNotes")
       .populate("department", "code name")
       .populate("assignedTo", "name email staffTitle");
     if (!issue) return res.status(404).json({ success: false, message: "Issue not found" });

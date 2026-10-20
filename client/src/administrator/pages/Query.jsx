@@ -407,9 +407,14 @@ const Query = () => {
                       <span style={{ color: C.muted }}>{selected.department?.code}</span>
                     </div>
                   </div>
-                  <div className="text-sm rounded-lg p-3 border" style={{ borderColor: C.border, backgroundColor: C.surfaceAlt, color: C.text }}>
+                  <div className="text-sm rounded-lg p-3 border whitespace-pre-wrap" style={{ borderColor: C.border, backgroundColor: C.surfaceAlt, color: C.text }}>
                     {selected.description}
                   </div>
+                  {selected.status === "Rejected" && selected.rejectionReason && (
+                    <div className="text-sm rounded-lg p-3 border" style={{ borderColor: C.red, color: C.text }}>
+                      <strong>Rejection reason:</strong> {selected.rejectionReason}
+                    </div>
+                  )}
                   <div className="text-sm">
                     <p className="font-semibold mb-1" style={{ color: C.text }}>Student</p>
                     <p style={{ color: C.muted }}>{selected.studentName} · {selected.studentEmail}</p>
@@ -449,6 +454,24 @@ const Query = () => {
                       )}
                     </ul>
                   </div>
+                  {selected.internalNotes?.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: C.muted }}>
+                        Internal notes ({selected.internalNotes.length}) · staff only
+                      </h4>
+                      <ul className="space-y-2">
+                        {selected.internalNotes.map((n) => (
+                          <li key={n._id} className="text-sm p-3 rounded-lg border" style={{ borderColor: C.amber, backgroundColor: `${C.amber}12` }}>
+                            <div className="flex items-center justify-between mb-1 text-xs">
+                              <span className="font-medium" style={{ color: C.text }}>{n.authorName}</span>
+                              <span style={{ color: C.muted }}>{moment(n.createdAt).fromNow()}</span>
+                            </div>
+                            <p className="whitespace-pre-wrap" style={{ color: C.text }}>{n.message}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </>
               )}
             </div>

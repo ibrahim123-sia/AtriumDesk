@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import axios from "../utils/axios";
 import {
   createNewChat,
+  renameChat,
   deleteChat,
   fetchUsersChats,
   setSelectedChat,
@@ -15,6 +16,7 @@ import {
   Plus,
   Search,
   Trash2,
+  Pencil,
   LogOut,
   X,
   Moon,
@@ -163,6 +165,23 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
         setIsMenuOpen(false);
       }
     }
+  };
+
+  // Inline rename: the chat being renamed and its draft name.
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const startRename = (e, chat) => {
+    e.stopPropagation();
+    setRenamingId(chat._id);
+    setRenameDraft(chat.name && chat.name !== "New Chat" ? chat.name : chat.messages?.[0]?.content?.slice(0, 60) || "");
+  };
+  const saveRename = async () => {
+    const id = renamingId;
+    const name = renameDraft.trim();
+    setRenamingId(null);
+    if (!id || !name) return;
+    const result = await dispatch(renameChat({ chatId: id, name })).unwrap();
+    if (!result.success) toast.error(result.message);
   };
 
   const handleDeleteChat = (e, chatId) => {
@@ -353,7 +372,7 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
                 return (
                   <div
                     key={chat._id || chat.id}
-                    onClick={() => handleChatClick(chat)}
+                    onClick={() => renamingId !== chat._id && handleChatClick(chat)}
                     className="group flex items-center justify-between p-2.5 rounded-lg cursor-pointer transition-all relative"
                     style={{
                       backgroundColor: isSelected ? "rgba(255,255,255,.12)" : "transparent",
@@ -370,12 +389,29 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
                         <MessageSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "rgba(255,255,255,.5)" }} />
-                        <p className="text-sm font-medium truncate text-white">
-                          {/* The server names a chat after its first question;
-                              a renamed chat keeps its new name. */}
-                          {(chat.name && chat.name !== "New Chat" ? chat.name : chat.messages?.[0]?.content?.slice(0, 30)) ||
-                            "New Chat"}
-                        </p>
+                        {renamingId === chat._id ? (
+                          <input
+                            autoFocus
+                            value={renameDraft}
+                            maxLength={80}
+                            aria-label="Chat name"
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => setRenameDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveRename();
+                              if (e.key === "Escape") setRenamingId(null);
+                            }}
+                            onBlur={saveRename}
+                            className="flex-1 min-w-0 text-sm px-1.5 py-0.5 rounded bg-white/15 text-white outline-none"
+                          />
+                        ) : (
+                          <p className="text-sm font-medium truncate text-white">
+                            {/* The server names a chat after its first question;
+                                a renamed chat keeps its new name. */}
+                            {(chat.name && chat.name !== "New Chat" ? chat.name : chat.messages?.[0]?.content?.slice(0, 30)) ||
+                              "New Chat"}
+                          </p>
+                        )}
                         {isLoading && (
                           <div
                             className="ml-2 w-3 h-3 border-2 rounded-full animate-spin shrink-0"
@@ -390,15 +426,29 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
                       </p>
                     </div>
 
-                    <button
-                      onClick={(e) => handleDeleteChat(e, chat._id || chat.id)}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded transition-opacity"
-                      aria-label="Delete chat"
-                      disabled={isLoading}
-                      style={{ color: "rgba(255,255,255,.5)" }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {/* Always visible on touch screens; on hover/focus with a mouse. */}
+                    <div className="flex items-center gap-0.5 shrink-0 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => startRename(e, chat)}
+                        className="p-1 rounded hover:bg-white/10"
+                        aria-label="Rename chat"
+                        title="Rename"
+                        disabled={isLoading}
+                        style={{ color: "rgba(255,255,255,.6)" }}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => handleDeleteChat(e, chat._id || chat.id)}
+                        className="p-1 rounded hover:bg-white/10"
+                        aria-label="Delete chat"
+                        title="Delete"
+                        disabled={isLoading}
+                        style={{ color: "rgba(255,255,255,.6)" }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 );
               })}

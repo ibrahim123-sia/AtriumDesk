@@ -85,7 +85,13 @@ const tenantSlice = createSlice({
           state.settings = action.payload.tenant;
           // Reflect the change in the whole app immediately, not just the
           // Settings form — no need to log out/in to see it take effect.
-          state.branding = action.payload.tenant.branding;
+          // The login copy also carries slug + enabledFeatures, which the
+          // settings payload doesn't — keep those, take the rest as saved.
+          state.branding = {
+            ...action.payload.tenant.branding,
+            slug: state.branding?.slug || action.payload.tenant.slug,
+            enabledFeatures: state.branding?.enabledFeatures,
+          };
         }
       })
       .addCase(updateTenantSettings.rejected, (state) => {

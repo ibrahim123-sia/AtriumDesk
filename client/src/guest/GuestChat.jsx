@@ -10,6 +10,7 @@ import {
   fetchGuestBranding,
 } from "../redux/slices/guestSlice";
 import { AnswerSources, AnswerFeedback } from "../student/components/Message";
+import { starterQuestionsFor } from "../utils/starterQuestions";
 import { toggleTheme as toggleThemeAction } from "../redux/slices/themeSlice";
 import GuestSidebar from "./GuestSidebar";
 import {
@@ -23,8 +24,12 @@ import {
   Building,
   Wallet,
   Trash2,
+  MessageSquare,
 } from "lucide-react";
 import toast from "react-hot-toast";
+
+// Icons cycle through the starter questions (whatever the university wrote).
+const STARTER_ICONS = [Wallet, Users, Building, Book, Sparkles, MessageSquare];
 
 // `embedded`: the website widget's iframe (/embed) — just the conversation,
 // with links to the full site opening in a new tab.
@@ -138,28 +143,10 @@ const GuestChat = ({ embedded = false }) => {
     toast.success("Chat cleared. Start a new conversation.");
   };
 
-  const suggestedTopics = [
-    {
-      icon: <Wallet className="w-4 h-4" />,
-      text: "What is the fee structure for the Bachelor programs?",
-    },
-    {
-      icon: <Users className="w-4 h-4" />,
-      text: "What documents are required at the time of admission?",
-    },
-    {
-      icon: <Building className="w-4 h-4" />,
-      text: `Is ${universityShort} recognized by H.E.C?`,
-    },
-    {
-      icon: <Book className="w-4 h-4" />,
-      text: `In which areas does ${universityShort} offer degrees?`,
-    },
-    {
-      icon: <Sparkles className="w-4 h-4" />,
-      text: `Does ${universityShort} offer any scholarships?`,
-    },
-  ];
+  const suggestedTopics = starterQuestionsFor(tenantBranding, "guest").map((text, i) => {
+    const Icon = STARTER_ICONS[i % STARTER_ICONS.length];
+    return { icon: <Icon className="w-4 h-4" />, text };
+  });
 
   // Format messages from context for display
   const displayMessages = guestMessages.map((msg, index) => ({

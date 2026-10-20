@@ -103,6 +103,7 @@ const Profile = () => {
   const theme = useSelector((s) => s.theme.theme);
   const isDark = theme === "dark";
   const tenantBranding = useSelector((s) => s.tenant.branding);
+  const departments = useSelector((s) => s.department.departments);
 
   const fileRef = useRef(null);
   const [name, setName] = useState(user?.name || "");
@@ -123,6 +124,7 @@ const Profile = () => {
   // academic profile to fill in.
   const p = user?.profile || {};
   const [core, setCore] = useState({
+    departmentId: user?.department?._id || user?.department || "",
     degreeProgram: p.core?.degreeProgram || "",
     cgpa: p.core?.cgpa ?? "",
     cgpaScale: p.core?.cgpaScale ?? 4,
@@ -216,6 +218,7 @@ const Profile = () => {
     const result = await dispatch(
       updateProfileDetails({
         core: {
+          departmentId: core.departmentId || null,
           degreeProgram: core.degreeProgram,
           cgpa: core.cgpa === "" ? null : Number(core.cgpa),
           cgpaScale: core.cgpaScale === "" ? null : Number(core.cgpaScale),
@@ -538,6 +541,19 @@ const Profile = () => {
 
             {/* Core */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field C={C} label="Department" hint="Events in your department are shown first.">
+                <select
+                  value={core.departmentId}
+                  onChange={(e) => setCore({ ...core, departmentId: e.target.value })}
+                  className={fieldClass}
+                  style={{ backgroundColor: C.input, borderColor: C.border, color: C.text }}
+                >
+                  <option value="">Not set</option>
+                  {(departments || []).filter((d) => d.isActive !== false).map((d) => (
+                    <option key={d._id} value={d._id}>{d.code} — {d.name}</option>
+                  ))}
+                </select>
+              </Field>
               <Field C={C} label="Degree program">
                 <input
                   type="text"
