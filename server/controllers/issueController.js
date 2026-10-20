@@ -1,6 +1,8 @@
+import rateLimit from "express-rate-limit";
 import { notify, safeHtml, multilineHtml } from "../services/notify.js";
 import { suggestDepartment } from "../services/departmentSuggestion.js";
 import { deleteUpload } from "../services/fileStore.js";
+import { getPythonBackendResponse, logAiUsage } from "./messageController.js";
 
 // Disk + R2 copy (services/fileStore.js), best-effort.
 const cleanupFiles = (files) => {
@@ -208,6 +210,21 @@ export const getMyIssueById = async (req, res) => {
   }
 };
 
+// The staff member working on an issue, or — if nobody has picked it up, or
+// they've since left the department — everyone in its department.
+const issueWatchers = async (models, issue) => {
+  if (issue.assignedTo) {
+    const assignee = await models.User.findOne({
+      _id: issue.assignedTo,
+      role: "staff",
+      department: issue.department._id,
+      isBlocked: false,
+    });
+    if (assignee) return [assignee];
+  }
+  return models.User.find({ role: "staff", department: issue.department._id, isBlocked: false });
+};
+
 export const addStudentReply = async (req, res) => {
   const { message } = req.body;
   if (!message || !message.trim()) {
@@ -219,34 +236,44 @@ export const addStudentReply = async (req, res) => {
     if (issue.studentId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
+    if (issue.status === "Closed") {
+      return res.status(400).json({
+        success: false,
+        message: "This issue is closed. Please file a new issue if you still need help.",
+      });
+    }
     issue.replies.push({
       authorId: req.user._id,
       authorName: req.user.name,
       authorRole: "student",
       message: message.trim(),
     });
+    // A reply on a resolved issue means it isn't resolved: back to the
+    // department's open queue instead of sitting under "Resolved".
+    const reopened = issue.status === "Resolved";
+    if (reopened) {
+      issue.status = "In Progress";
+      recordEvent(issue, req.user, "reopen", "Resolved → In Progress (student replied)");
+    } else {
+      recordEvent(issue, req.user, "reply", "student replied");
+    }
     await issue.save();
 
-    const staff = await req.models.User.find({
-      role: "staff",
-      department: issue.department._id,
-      isBlocked: false,
-    });
-    for (const s of staff) {
+    for (const s of await issueWatchers(req.models, issue)) {
       notify(req.models.Notification, s, {
         type: "issue_replied",
         issueId: issue._id,
-        message: `Student replied on: ${issue.title}`,
+        message: reopened ? `Student reopened: ${issue.title}` : `Student replied on: ${issue.title}`,
         link: `/staff/issues/${issue._id}`,
-        emailSubject: `[${issue.department.code}] Student replied`,
-        emailHeading: "Student added a reply",
+        emailSubject: reopened ? `[${issue.department.code}] Issue reopened by the student` : `[${issue.department.code}] Student replied`,
+        emailHeading: reopened ? "The student says this isn't resolved yet" : "Student added a reply",
         emailBody: safeHtml`<strong>${issue.title}</strong><br/><br/>${issue.studentName}: ${multilineHtml(message.trim())}`,
         branding: req.tenant?.branding,
         tenantSlug: req.tenant?.slug,
       });
     }
 
-    res.json({ success: true, issue });
+    res.json({ success: true, issue, reopened });
   } catch (error) {
     console.error("addStudentReply error:", error);
     res.status(500).json({ success: false, message: "Failed to add reply" });
@@ -274,7 +301,8 @@ export const submitIssueFeedback = async (req, res) => {
     if (issue.studentId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
-    if (issue.status !== "Resolved") {
+    // Resolved, or closed after being resolved (auto-close keeps the rating open).
+    if (issue.status !== "Resolved" && !(issue.status === "Closed" && issue.resolvedAt)) {
       return res.status(400).json({ success: false, message: "Feedback can only be left on a resolved issue" });
     }
     issue.feedback = {
@@ -435,6 +463,11 @@ const STAFF_ISSUE_POPULATE = [
 
 const ALLOWED_STATUSES = ["Pending", "In Progress", "Resolved", "Closed", "Rejected"];
 
+// The staff view of an issue: with the department's internal notes, which
+// are select:false so no student-facing query can include them by accident.
+const findStaffIssue = (models, id) =>
+  models.Issue.findById(id).select("+internalNotes").populate(STAFF_ISSUE_POPULATE);
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -450,7 +483,7 @@ const versionConflict = (issue, expectedUpdatedAt) => {
 };
 
 const conflictResponse = async (models, res, issueId) => {
-  const fresh = await models.Issue.findById(issueId).populate(STAFF_ISSUE_POPULATE);
+  const fresh = await findStaffIssue(models, issueId);
   const ev = fresh?.lastEvent || {};
   const who = ev.byName ? `${ev.byName}${ev.byRole === "staff" ? " (staff)" : ""}` : "another staff member";
   return res.status(409).json({
@@ -489,14 +522,19 @@ const notifyDeptStaffOthers = async (models, issue, currentUserId, payload) => {
 
 export const getDeptIssues = async (req, res) => {
   try {
-    const { status, escalated } = req.query;
-    const filter = { department: req.user.department };
-    if (status) filter.status = status;
-    if (escalated !== undefined) filter.escalated = escalated === "true";
-    const issues = await req.models.Issue.find(filter)
-      .populate(STAFF_ISSUE_POPULATE)
-      .sort({ updatedAt: -1 });
-    res.json({ success: true, issues });
+    const { status, escalated, mine } = req.query;
+    const scope = { department: req.user.department };
+    if (escalated !== undefined) scope.escalated = escalated === "true";
+    if (mine === "true") scope.assignedTo = req.user._id;
+    const filter = status ? { ...scope, status } : scope;
+    const [issues, byStatus] = await Promise.all([
+      req.models.Issue.find(filter).populate(STAFF_ISSUE_POPULATE).sort({ updatedAt: -1 }),
+      // Tab counts for every status, whichever tab is open.
+      req.models.Issue.aggregate([{ $match: scope }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
+    ]);
+    const counts = Object.fromEntries(byStatus.map((row) => [row._id, row.count]));
+    counts.All = byStatus.reduce((sum, row) => sum + row.count, 0);
+    res.json({ success: true, issues, counts });
   } catch (error) {
     console.error("getDeptIssues error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch issues" });
@@ -505,7 +543,7 @@ export const getDeptIssues = async (req, res) => {
 
 export const getDeptIssueById = async (req, res) => {
   try {
-    const issue = await req.models.Issue.findById(req.params.id).populate(STAFF_ISSUE_POPULATE);
+    const issue = await findStaffIssue(req.models, req.params.id);
     if (!issue) return res.status(404).json({ success: false, message: "Issue not found" });
     if (!sameDept(issue, req.user)) {
       return res.status(403).json({ success: false, message: "Issue belongs to another department" });
@@ -545,7 +583,7 @@ export const updateIssueStatus = async (req, res) => {
     }
     if (versionConflict(issue, expectedUpdatedAt)) return conflictResponse(req.models, res, issue._id);
     if (issue.status === status) {
-      const populated = await req.models.Issue.findById(issue._id).populate(STAFF_ISSUE_POPULATE);
+      const populated = await findStaffIssue(req.models, issue._id);
       return res.json({ success: true, issue: populated, message: "Status unchanged" });
     }
 
@@ -588,7 +626,7 @@ export const updateIssueStatus = async (req, res) => {
       tenantSlug: req.tenant?.slug,
     });
 
-    const populated = await req.models.Issue.findById(issue._id).populate(STAFF_ISSUE_POPULATE);
+    const populated = await findStaffIssue(req.models, issue._id);
     res.json({ success: true, issue: populated });
   } catch (error) {
     console.error("updateIssueStatus error:", error);
@@ -693,7 +731,7 @@ export const addStaffReply = async (req, res) => {
       });
     }
 
-    const populated = await req.models.Issue.findById(issue._id).populate(STAFF_ISSUE_POPULATE);
+    const populated = await findStaffIssue(req.models, issue._id);
     res.json({ success: true, issue: populated });
   } catch (error) {
     console.error("addStaffReply error:", error);
@@ -771,7 +809,7 @@ export const assignIssue = async (req, res) => {
       }
     }
 
-    const populated = await req.models.Issue.findById(issue._id).populate(STAFF_ISSUE_POPULATE);
+    const populated = await findStaffIssue(req.models, issue._id);
     res.json({ success: true, issue: populated });
   } catch (error) {
     console.error("assignIssue error:", error);
@@ -800,3 +838,256 @@ export const listDeptStaff = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to load staff" });
   }
 };
+
+// ---------------------------------------------------------------------------
+// POST /api/issue/department/:id/notes  { message }
+//   A staff-only note on the issue — never shown to the student.
+// ---------------------------------------------------------------------------
+
+export const addInternalNote = async (req, res) => {
+  const message = String(req.body?.message || "").trim();
+  if (!message) return res.status(400).json({ success: false, message: "Note text is required" });
+  if (message.length > 4000) return res.status(400).json({ success: false, message: "Notes are limited to 4000 characters" });
+  try {
+    const issue = await req.models.Issue.findById(req.params.id).select("+internalNotes");
+    if (!issue) return res.status(404).json({ success: false, message: "Issue not found" });
+    if (issue.department.toString() !== req.user.department.toString()) {
+      return res.status(403).json({ success: false, message: "Issue belongs to another department" });
+    }
+    issue.internalNotes.push({ authorId: req.user._id, authorName: req.user.name, message });
+    await issue.save();
+    res.status(201).json({ success: true, issue: await findStaffIssue(req.models, issue._id) });
+  } catch (error) {
+    console.error("addInternalNote error:", error);
+    res.status(500).json({ success: false, message: "Failed to add note" });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// PATCH /api/issue/department/:id/transfer  { departmentId, note?, expectedUpdatedAt? }
+//   Sends an issue that was filed with the wrong department to the right one.
+//   The new department starts fresh (unassigned, SLA clock still running
+//   from when the student filed it); the student is told where it went.
+// ---------------------------------------------------------------------------
+
+export const transferIssue = async (req, res) => {
+  const { departmentId, note, expectedUpdatedAt } = req.body || {};
+  if (!departmentId) return res.status(400).json({ success: false, message: "departmentId is required" });
+  try {
+    const issue = await req.models.Issue.findById(req.params.id).select("+internalNotes").populate("department", "code name");
+    if (!issue) return res.status(404).json({ success: false, message: "Issue not found" });
+    if (!sameDept(issue, req.user)) {
+      return res.status(403).json({ success: false, message: "Issue belongs to another department" });
+    }
+    if (versionConflict(issue, expectedUpdatedAt)) return conflictResponse(req.models, res, issue._id);
+    if (["Resolved", "Closed", "Rejected"].includes(issue.status)) {
+      return res.status(400).json({ success: false, message: `A ${issue.status.toLowerCase()} issue can't be transferred` });
+    }
+    const target = await req.models.Department.findById(departmentId);
+    if (!target || !target.isActive) {
+      return res.status(400).json({ success: false, message: "Choose an active department" });
+    }
+    if (target._id.toString() === issue.department._id.toString()) {
+      return res.status(400).json({ success: false, message: "The issue is already in this department" });
+    }
+
+    const from = issue.department;
+    const reason = String(note || "").trim().slice(0, 1000);
+    issue.department = target._id;
+    issue.assignedTo = null;
+    // Escalation belongs to the department that owns the issue now.
+    issue.escalated = false;
+    issue.escalatedAt = null;
+    issue.internalNotes.push({
+      authorId: req.user._id,
+      authorName: req.user.name,
+      message: `Transferred from ${from.code} to ${target.code}${reason ? `: ${reason}` : "."}`,
+    });
+    recordEvent(issue, req.user, "transfer", `${from.code} → ${target.code}`, req.impersonatedBy);
+    await issue.save();
+
+    // The question really belonged to `target` — teaches the handoff's
+    // department suggestion, and records the mix-up for the confusion data.
+    await req.models.DepartmentExample.create({
+      question: issue.title,
+      departmentId: target._id,
+      suggestedDepartmentId: from._id,
+    }).catch((error) => console.error("transferIssue: example not recorded:", error.message));
+
+    const targetStaff = await req.models.User.find({ role: "staff", department: target._id, isBlocked: false });
+    for (const s of targetStaff) {
+      notify(req.models.Notification, s, {
+        type: "issue_created",
+        issueId: issue._id,
+        message: `Transferred to ${target.code} from ${from.code}: ${issue.title}`,
+        link: `/staff/issues/${issue._id}`,
+        emailSubject: `[${target.code}] Issue transferred to your department`,
+        emailHeading: `An issue was transferred to ${target.name}`,
+        emailBody: safeHtml`<strong>${issue.title}</strong><br/><br/>From: ${issue.studentName} (${issue.studentEmail})<br/>Transferred by ${req.user.name} (${from.code})${reason ? safeHtml`<br/>Note: ${reason}` : ""}<br/><br/>${multilineHtml(issue.description)}`,
+        branding: req.tenant?.branding,
+        tenantSlug: req.tenant?.slug,
+      });
+    }
+    const student = await req.models.User.findById(issue.studentId);
+    if (student) {
+      notify(req.models.Notification, student, {
+        type: "issue_status_changed",
+        issueId: issue._id,
+        message: `Your issue "${issue.title}" was moved to ${target.name}`,
+        link: `/issues/${issue._id}`,
+        emailSubject: `Your issue was moved to ${target.code}`,
+        emailHeading: "Your issue is with a different department now",
+        emailBody: safeHtml`<strong>${issue.title}</strong><br/><br/>${from.name} passed your issue to <strong>${target.name}</strong>, who handle this kind of request. You don't need to do anything — they'll reply here.`,
+        branding: req.tenant?.branding,
+        tenantSlug: req.tenant?.slug,
+      });
+    }
+
+    res.json({ success: true, transferredTo: { _id: target._id, code: target.code, name: target.name } });
+  } catch (error) {
+    console.error("transferIssue error:", error);
+    res.status(500).json({ success: false, message: "Failed to transfer issue" });
+  }
+};
+
+// GET /api/issue/department/targets — departments an issue can be sent to.
+export const listTransferTargets = async (req, res) => {
+  try {
+    const departments = await req.models.Department.find({ isActive: true, _id: { $ne: req.user.department } })
+      .select("code name")
+      .sort({ name: 1 });
+    res.json({ success: true, departments });
+  } catch (error) {
+    console.error("listTransferTargets error:", error);
+    res.status(500).json({ success: false, message: "Failed to load departments" });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Saved replies — /api/issue/department/saved-replies
+//   A department's reusable answers, shared by its staff.
+// ---------------------------------------------------------------------------
+
+const cleanSavedReply = (body) => ({
+  title: String(body?.title || "").trim().slice(0, 120),
+  body: String(body?.body || "").trim().slice(0, 4000),
+});
+
+export const listSavedReplies = async (req, res) => {
+  try {
+    const replies = await req.models.CannedResponse.find({ department: req.user.department }).sort({ title: 1 });
+    res.json({ success: true, replies });
+  } catch (error) {
+    console.error("listSavedReplies error:", error);
+    res.status(500).json({ success: false, message: "Failed to load saved replies" });
+  }
+};
+
+export const createSavedReply = async (req, res) => {
+  const { title, body } = cleanSavedReply(req.body);
+  if (!title || !body) return res.status(400).json({ success: false, message: "A title and the reply text are required" });
+  try {
+    const count = await req.models.CannedResponse.countDocuments({ department: req.user.department });
+    if (count >= 200) return res.status(400).json({ success: false, message: "This department already has 200 saved replies" });
+    const reply = await req.models.CannedResponse.create({
+      department: req.user.department,
+      title,
+      body,
+      createdBy: req.user._id,
+      createdByName: req.user.name,
+    });
+    res.status(201).json({ success: true, reply });
+  } catch (error) {
+    console.error("createSavedReply error:", error);
+    res.status(500).json({ success: false, message: "Failed to save reply" });
+  }
+};
+
+export const updateSavedReply = async (req, res) => {
+  const { title, body } = cleanSavedReply(req.body);
+  if (!title || !body) return res.status(400).json({ success: false, message: "A title and the reply text are required" });
+  try {
+    const reply = await req.models.CannedResponse.findOneAndUpdate(
+      { _id: req.params.replyId, department: req.user.department },
+      { title, body },
+      { new: true }
+    );
+    if (!reply) return res.status(404).json({ success: false, message: "Saved reply not found" });
+    res.json({ success: true, reply });
+  } catch (error) {
+    console.error("updateSavedReply error:", error);
+    res.status(500).json({ success: false, message: "Failed to update reply" });
+  }
+};
+
+export const deleteSavedReply = async (req, res) => {
+  try {
+    const result = await req.models.CannedResponse.deleteOne({ _id: req.params.replyId, department: req.user.department });
+    if (!result.deletedCount) return res.status(404).json({ success: false, message: "Saved reply not found" });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("deleteSavedReply error:", error);
+    res.status(500).json({ success: false, message: "Failed to delete reply" });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Answer before filing — GET /api/issue/answer-suggestion?question=...
+//   While a student writes a new issue, ask the assistant first: if the
+//   knowledge base has a confident answer, they may not need a ticket.
+//   POST /api/issue/answer-suggestion/feedback { question } records that it
+//   did answer their question (counted on the admin's assistant card).
+// ---------------------------------------------------------------------------
+
+export const answerSuggestionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.tenant?.slug || "?"}:${req.user?._id}`,
+  message: { success: false, message: "Too many suggestion requests — please wait a few minutes." },
+});
+
+export const getAnswerSuggestion = async (req, res) => {
+  const question = String(req.query.question || "").trim().slice(0, 600);
+  if (question.length < 12) return res.status(400).json({ success: false, message: "question is too short" });
+  if (req.tenant?.enabledFeatures?.chatbot === false) return res.json({ success: true, answer: null });
+  try {
+    const { answer, confidenceTier, sources, usage } = await getPythonBackendResponse(question, {
+      userId: req.user._id,
+      tenantSlug: req.tenant.slug,
+      branding: req.tenant?.branding,
+      ragConfig: req.tenant?.ragConfig,
+      timeoutMs: 25000,
+    });
+    logAiUsage(req.models, usage, { userType: req.user.role, userId: req.user._id, endpoint: "issue_suggestion" });
+    // Only a confident answer is worth putting in front of someone about to
+    // ask a person.
+    if (confidenceTier !== "high") return res.json({ success: true, answer: null });
+    res.json({ success: true, answer, sources: sources || [] });
+  } catch (error) {
+    // Never blocks filing: no suggestion, the form carries on.
+    console.error("getAnswerSuggestion error:", error.message);
+    res.json({ success: true, answer: null });
+  }
+};
+
+export const recordAnswerSuggestionHelped = async (req, res) => {
+  const question = String(req.body?.question || "").trim().slice(0, 1000);
+  if (!question) return res.status(400).json({ success: false, message: "question is required" });
+  try {
+    await req.models.AnswerFeedback.create({
+      userType: "student",
+      userId: req.user._id,
+      helpful: true,
+      question,
+      confidenceTier: "high",
+      context: "issue_form",
+    });
+    res.status(201).json({ success: true });
+  } catch (error) {
+    console.error("recordAnswerSuggestionHelped error:", error);
+    res.status(500).json({ success: false, message: "Failed to record" });
+  }
+};
+

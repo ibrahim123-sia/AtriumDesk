@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Search, Flag, UserX, ShieldCheck, Users as UsersIcon, X, Upload } from "lucide-react";
 import toast from "react-hot-toast";
 import moment from "moment";
@@ -52,6 +53,11 @@ const Users = () => {
     setPage(1);
   }, [search, filter]);
 
+  // /admin/users/:id opens that student's details.
+  const { id: routeUserId } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const openDetail = (id) => {
     setDrawerOpen(true);
     dispatch(fetchUserActivity(id));
@@ -60,7 +66,14 @@ const Users = () => {
   const closeDetail = () => {
     setDrawerOpen(false);
     dispatch(clearSelectedUser());
+    if (routeUserId) navigate(location.pathname.replace(/\/[^/]+$/, ""), { replace: true });
   };
+
+  useEffect(() => {
+    if (!routeUserId) return;
+    setDrawerOpen(true);
+    dispatch(fetchUserActivity(routeUserId));
+  }, [dispatch, routeUserId]);
 
   const doToggleBlock = async () => {
     if (!selectedUser) return;

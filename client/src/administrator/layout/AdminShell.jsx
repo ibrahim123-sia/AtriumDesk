@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { getPalette } from "../utils/palette";
 import { logoutUser } from "../../redux/slices/authSlice";
 import TopNavbar from "../../components/layouts/TopNavbar";
+import NotificationBell from "../../components/NotificationBell";
 import ImpersonationBanner from "../../components/ImpersonationBanner";
 
 const TITLES = {
@@ -69,6 +70,7 @@ const AdminShell = () => {
         avatarInitials={initials}
         userName={user?.name}
         userEmail={user?.email}
+        actions={<NotificationBell onDark />}
         menuItems={[
           { label: "Profile", to: "/admin/profile" },
           { label: "Sign out", danger: true, onClick: handleLogout },

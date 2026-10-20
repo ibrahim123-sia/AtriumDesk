@@ -152,12 +152,13 @@ export const fetchDeptIssues = createAsyncThunk(
   "issue/fetchDept",
   async (arg, { getState }) => {
     // Accepts either a bare status string (legacy call sites) or
-    // { status, escalated } for the Rev 5 §4.1 escalated-only filter.
-    const { status, escalated } = typeof arg === "string" ? { status: arg } : arg || {};
+    // { status, escalated, mine } for the escalated-only / assigned-to-me filters.
+    const { status, escalated, mine } = typeof arg === "string" ? { status: arg } : arg || {};
     try {
       const query = new URLSearchParams();
       if (status) query.set("status", status);
       if (escalated) query.set("escalated", "true");
+      if (mine) query.set("mine", "true");
       const qs = query.toString();
       const { data } = await axios.get(
         `/api/issue/department${qs ? `?${qs}` : ""}`,
@@ -236,6 +237,114 @@ export const assignIssue = createAsyncThunk(
   }
 );
 
+// Staff-only note on an issue (never shown to the student).
+export const addInternalNote = createAsyncThunk(
+  "issue/addNote",
+  async ({ id, message }, { getState }) => {
+    try {
+      const { data } = await axios.post(`/api/issue/department/${id}/notes`, { message }, authHeader(getState));
+      return data;
+    } catch (error) {
+      return { success: false, message: errorMessage(error, "Failed to add note") };
+    }
+  }
+);
+
+// Send an issue to the department that should handle it.
+export const transferIssue = createAsyncThunk(
+  "issue/transfer",
+  async ({ id, departmentId, note, expectedUpdatedAt }, { getState }) => {
+    try {
+      const { data } = await axios.patch(
+        `/api/issue/department/${id}/transfer`,
+        { departmentId, note, expectedUpdatedAt },
+        authHeader(getState)
+      );
+      return data;
+    } catch (error) {
+      if (error.response?.status === 409) return conflictPayload(error);
+      return { success: false, message: errorMessage(error, "Failed to transfer issue") };
+    }
+  }
+);
+
+export const fetchTransferTargets = createAsyncThunk(
+  "issue/fetchTransferTargets",
+  async (_, { getState }) => {
+    try {
+      const { data } = await axios.get("/api/issue/department/targets", authHeader(getState));
+      return data;
+    } catch (error) {
+      return { success: false, message: errorMessage(error, "Failed to load departments") };
+    }
+  }
+);
+
+// The department's saved replies.
+export const fetchSavedReplies = createAsyncThunk(
+  "issue/fetchSavedReplies",
+  async (_, { getState }) => {
+    try {
+      const { data } = await axios.get("/api/issue/department/saved-replies", authHeader(getState));
+      return data;
+    } catch (error) {
+      return { success: false, message: errorMessage(error, "Failed to load saved replies") };
+    }
+  }
+);
+
+export const createSavedReply = createAsyncThunk(
+  "issue/createSavedReply",
+  async ({ title, body }, { getState }) => {
+    try {
+      const { data } = await axios.post("/api/issue/department/saved-replies", { title, body }, authHeader(getState));
+      return data;
+    } catch (error) {
+      return { success: false, message: errorMessage(error, "Failed to save reply") };
+    }
+  }
+);
+
+export const deleteSavedReply = createAsyncThunk(
+  "issue/deleteSavedReply",
+  async (replyId, { getState }) => {
+    try {
+      const { data } = await axios.delete(`/api/issue/department/saved-replies/${replyId}`, authHeader(getState));
+      return { ...data, replyId };
+    } catch (error) {
+      return { success: false, message: errorMessage(error, "Failed to delete reply") };
+    }
+  }
+);
+
+// Before a student files: does the knowledge base already answer this?
+export const fetchAnswerSuggestion = createAsyncThunk(
+  "issue/answerSuggestion",
+  async (question, { getState }) => {
+    try {
+      const { data } = await axios.get(
+        `/api/issue/answer-suggestion?question=${encodeURIComponent(question)}`,
+        authHeader(getState)
+      );
+      return data;
+    } catch {
+      return { success: false, answer: null };
+    }
+  }
+);
+
+export const recordSuggestionHelped = createAsyncThunk(
+  "issue/suggestionHelped",
+  async (question, { getState }) => {
+    try {
+      const { data } = await axios.post("/api/issue/answer-suggestion/feedback", { question }, authHeader(getState));
+      return data;
+    } catch {
+      return { success: false };
+    }
+  }
+);
+
 export const fetchDeptStaff = createAsyncThunk(
   "issue/fetchDeptStaff",
   async (_, { getState }) => {
@@ -248,10 +357,21 @@ export const fetchDeptStaff = createAsyncThunk(
   }
 );
 
+// A failed detail load says why instead of "Loading…" forever.
+const detailErrorFor = (payload) =>
+  /not found|access denied|another department/i.test(payload?.message || "")
+    ? "This issue isn't available — it may have moved to another department or been removed."
+    : payload?.message || "Couldn't load this issue.";
+
 const initialState = {
   myIssues: [],
   deptIssues: [],
+  // Per-status totals for the inbox tabs (whichever tab is open).
+  deptIssueCounts: {},
+  savedReplies: [],
+  transferTargets: [],
   selectedIssue: null,
+  selectedIssueError: null,
   deptStats: null,
   deptStatsLoading: false,
   deptStaff: [],
@@ -265,6 +385,7 @@ const issueSlice = createSlice({
   reducers: {
     clearSelectedIssue(state) {
       state.selectedIssue = null;
+      state.selectedIssueError = null;
     },
   },
   extraReducers: (builder) => {
@@ -278,14 +399,49 @@ const issueSlice = createSlice({
       .addCase(fetchDeptIssues.pending, (state) => { state.loading = true; })
       .addCase(fetchDeptIssues.fulfilled, (state, action) => {
         state.loading = false;
-        if (action.payload.success) state.deptIssues = action.payload.issues;
+        if (action.payload.success) {
+          state.deptIssues = action.payload.issues;
+          state.deptIssueCounts = action.payload.counts || {};
+        }
       })
       .addCase(fetchDeptIssues.rejected, (state) => { state.loading = false; })
       .addCase(fetchIssueById.fulfilled, (state, action) => {
-        if (action.payload.success) state.selectedIssue = action.payload.issue;
+        if (action.payload.success) {
+          state.selectedIssue = action.payload.issue;
+          state.selectedIssueError = null;
+        } else if (!state.selectedIssue) {
+          state.selectedIssueError = detailErrorFor(action.payload);
+        }
       })
       .addCase(fetchDeptIssueById.fulfilled, (state, action) => {
+        if (action.payload.success) {
+          state.selectedIssue = action.payload.issue;
+          state.selectedIssueError = null;
+        } else if (!state.selectedIssue || /another department|not found/i.test(action.payload.message || "")) {
+          // Also after a transfer: the issue left this department.
+          state.selectedIssue = null;
+          state.selectedIssueError = detailErrorFor(action.payload);
+        }
+      })
+      .addCase(addInternalNote.fulfilled, (state, action) => {
         if (action.payload.success) state.selectedIssue = action.payload.issue;
+      })
+      .addCase(transferIssue.fulfilled, (state, action) => {
+        if (action.payload.conflict && action.payload.issue) state.selectedIssue = action.payload.issue;
+      })
+      .addCase(fetchTransferTargets.fulfilled, (state, action) => {
+        if (action.payload.success) state.transferTargets = action.payload.departments;
+      })
+      .addCase(fetchSavedReplies.fulfilled, (state, action) => {
+        if (action.payload.success) state.savedReplies = action.payload.replies;
+      })
+      .addCase(createSavedReply.fulfilled, (state, action) => {
+        if (action.payload.success) {
+          state.savedReplies = [...state.savedReplies, action.payload.reply].sort((a, b) => a.title.localeCompare(b.title));
+        }
+      })
+      .addCase(deleteSavedReply.fulfilled, (state, action) => {
+        if (action.payload.success) state.savedReplies = state.savedReplies.filter((r) => r._id !== action.payload.replyId);
       })
       .addCase(addStudentReply.fulfilled, (state, action) => {
         if (action.payload.success) state.selectedIssue = action.payload.issue;

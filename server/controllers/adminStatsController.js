@@ -96,7 +96,7 @@ export const getAssistantInsights = async (req, res) => {
   const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 1), 365);
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   try {
-    const [byTier, guestAnswers, feedback, handoffs, openGaps, topGaps] = await Promise.all([
+    const [byTier, guestAnswers, feedback, handoffs, openGaps, topGaps, answeredBeforeTicket] = await Promise.all([
       // Student answers by retrieval confidence (chat messages are embedded).
       req.models.Chat.aggregate([
         { $match: { updatedAt: { $gte: since } } },
@@ -108,7 +108,7 @@ export const getAssistantInsights = async (req, res) => {
       // their answers (cached repeats aren't counted).
       req.models.AiUsageLog.countDocuments({ endpoint: "guest_chat", createdAt: { $gte: since } }),
       req.models.AnswerFeedback.aggregate([
-        { $match: { createdAt: { $gte: since } } },
+        { $match: { createdAt: { $gte: since }, context: { $ne: "issue_form" } } },
         { $group: { _id: { userType: "$userType", helpful: "$helpful" }, count: { $sum: 1 } } },
       ]),
       req.models.Issue.countDocuments({ category: "chatbot_handoff", createdAt: { $gte: since } }),
@@ -119,6 +119,9 @@ export const getAssistantInsights = async (req, res) => {
         { $sort: { count: -1 } },
         { $limit: 5 },
       ]),
+      // The new-issue form showed an answer and the student said it was what
+      // they needed — a ticket that didn't have to be filed.
+      req.models.AnswerFeedback.countDocuments({ context: "issue_form", helpful: true, createdAt: { $gte: since } }),
     ]);
 
     const tiers = { high: 0, medium: 0, low: 0, unknown: 0 };
@@ -141,6 +144,7 @@ export const getAssistantInsights = async (req, res) => {
       confidence: tiers,
       // Chats a student turned into a ticket to a department.
       handoffs,
+      answeredBeforeTicket,
       feedback: {
         ...votes,
         total: totalVotes,

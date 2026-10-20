@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   Search,
   HelpCircle,
@@ -35,12 +36,13 @@ import StatCard from "../components/StatCard";
 import { getPalette } from "../utils/palette";
 
 const PAGE_SIZE = 25;
-const STATUSES = ["Pending", "In Progress", "Resolved", "Closed"];
+const STATUSES = ["Pending", "In Progress", "Resolved", "Closed", "Rejected"];
 
 const statusColor = (status, C) => {
   if (status === "Pending") return C.amber;
   if (status === "In Progress") return C.navy;
   if (status === "Resolved") return C.green;
+  if (status === "Rejected") return C.red;
   return C.muted;
 };
 
@@ -60,6 +62,10 @@ const Query = () => {
   const [escalatedOnly, setEscalatedOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // /admin/query/:id (e.g. from an escalation notification) opens that issue.
+  const { id: routeIssueId } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const listQuery = useMemo(
     () => ({
@@ -93,7 +99,14 @@ const Query = () => {
   const closeDetail = () => {
     setDrawerOpen(false);
     dispatch(clearSelected());
+    if (routeIssueId) navigate(location.pathname.replace(/\/[^/]+$/, ""), { replace: true });
   };
+
+  useEffect(() => {
+    if (!routeIssueId) return;
+    setDrawerOpen(true);
+    dispatch(fetchAdminIssueById(routeIssueId));
+  }, [dispatch, routeIssueId]);
 
   const topCategory = analytics?.byCategory?.[0];
   const totalIssues = (analytics?.byStatus &&

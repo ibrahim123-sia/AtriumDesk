@@ -1234,7 +1234,7 @@ export const parseCv = async (req, res) => {
       method: "POST",
       body: form,
       headers: { ...form.getHeaders(), "x-internal-secret": process.env.INTERNAL_SECRET || "" },
-      timeout: 60000,
+      signal: AbortSignal.timeout(60000),
     });
 
     if (!response.ok) {

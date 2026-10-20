@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Plus, Edit2, Building2, Save, X, Power } from "lucide-react";
+import { Plus, Edit2, Building2, Power } from "lucide-react";
 import toast from "react-hot-toast";
-import moment from "moment";
+import axios from "../../utils/axios";
 import {
   fetchDepartments,
   createDepartment,
@@ -24,8 +24,11 @@ const Departments = () => {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ code: "", name: "", description: "" });
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ name: "", description: "" });
+  // The department being edited (modal), its form, and its staff for "head".
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState({ name: "", description: "", slaThresholdHours: "", headUserId: "" });
+  const [deptStaff, setDeptStaff] = useState([]);
+  const token = useSelector((s) => s.auth.token);
   const [confirmDeactivate, setConfirmDeactivate] = useState(null);
 
   useEffect(() => {
@@ -48,16 +51,40 @@ const Departments = () => {
     }
   };
 
-  const startEdit = (d) => {
-    setEditingId(d._id);
-    setEditForm({ name: d.name, description: d.description || "" });
+  const startEdit = async (d) => {
+    setEditing(d);
+    setEditForm({
+      name: d.name,
+      description: d.description || "",
+      slaThresholdHours: d.slaThresholdHours ?? "",
+      headUserId: d.headUserId?._id || d.headUserId || "",
+    });
+    setDeptStaff([]);
+    try {
+      const { data } = await axios.get(`/api/admin/users?role=staff&departmentId=${d._id}&limit=200`, {
+        headers: { Authorization: token },
+      });
+      if (data.success) setDeptStaff((data.users || []).filter((u) => !u.isBlocked));
+    } catch {
+      /* the head picker just stays empty */
+    }
   };
 
-  const saveEdit = async (id) => {
-    const result = await dispatch(updateDepartment({ id, ...editForm })).unwrap();
+  const saveEdit = async (e) => {
+    e.preventDefault();
+    if (!editing) return;
+    const result = await dispatch(
+      updateDepartment({
+        id: editing._id,
+        name: editForm.name,
+        description: editForm.description,
+        slaThresholdHours: editForm.slaThresholdHours === "" ? null : Number(editForm.slaThresholdHours),
+        headUserId: editForm.headUserId || null,
+      })
+    ).unwrap();
     if (result.success) {
       toast.success("Department updated");
-      setEditingId(null);
+      setEditing(null);
     } else {
       toast.error(result.message || "Failed to update");
     }
@@ -97,8 +124,8 @@ const Departments = () => {
         columns={[
           { key: "code", label: "Code", width: 120 },
           { key: "name", label: "Name" },
-          { key: "description", label: "Description" },
-          { key: "created", label: "Created" },
+          { key: "sla", label: "First reply within" },
+          { key: "head", label: "Escalates to" },
           { key: "status", label: "Status" },
           { key: "actions", label: "" },
         ]}
@@ -125,31 +152,20 @@ const Departments = () => {
                   </span>
                 </AdminTableCell>
                 <AdminTableCell>
-                  {editingId === d._id ? (
-                    <input
-                      value={editForm.name}
-                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                      className="w-full px-2 py-1 text-sm rounded border"
-                      style={{ backgroundColor: C.input, borderColor: C.border, color: C.text }}
-                    />
-                  ) : (
-                    <span style={{ color: C.text }}>{d.name}</span>
+                  <span className="block" style={{ color: C.text }}>{d.name}</span>
+                  {d.description && (
+                    <span className="block text-xs" style={{ color: C.muted }}>{d.description}</span>
                   )}
                 </AdminTableCell>
                 <AdminTableCell>
-                  {editingId === d._id ? (
-                    <input
-                      value={editForm.description}
-                      onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                      className="w-full px-2 py-1 text-sm rounded border"
-                      style={{ backgroundColor: C.input, borderColor: C.border, color: C.text }}
-                    />
-                  ) : (
-                    <span style={{ color: C.muted }}>{d.description || "—"}</span>
-                  )}
+                  <span style={{ color: d.slaThresholdHours ? C.text : C.muted }}>
+                    {d.slaThresholdHours ? `${d.slaThresholdHours} h` : "48 h (default)"}
+                  </span>
                 </AdminTableCell>
                 <AdminTableCell>
-                  <span style={{ color: C.muted }}>{moment(d.createdAt).format("MMM D, YYYY")}</span>
+                  <span style={{ color: d.headUserId?.name ? C.text : C.muted }}>
+                    {d.headUserId?.name || "All department staff"}
+                  </span>
                 </AdminTableCell>
                 <AdminTableCell>
                   {d.isActive ? (
@@ -170,46 +186,37 @@ const Departments = () => {
                 </AdminTableCell>
                 <AdminTableCell>
                   <div className="flex items-center gap-1 justify-end">
-                    {editingId === d._id ? (
-                      <>
-                        <button onClick={() => saveEdit(d._id)} className="p-1.5 rounded" style={{ color: C.green }}>
-                          <Save className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => setEditingId(null)} className="p-1.5 rounded" style={{ color: C.muted }}>
-                          <X className="w-4 h-4" />
-                        </button>
-                      </>
+                    <button
+                      onClick={() => startEdit(d)}
+                      aria-label={`Edit ${d.code}`}
+                      title="Edit"
+                      className="p-1.5 rounded transition-colors"
+                      style={{ color: C.muted }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = C.navy)}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = C.muted)}
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    {d.isActive ? (
+                      <button
+                        onClick={() => setConfirmDeactivate(d)}
+                        aria-label={`Deactivate ${d.code}`}
+                        title="Deactivate"
+                        className="p-1.5 rounded transition-colors"
+                        style={{ color: C.muted }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = C.red)}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = C.muted)}
+                      >
+                        <Power className="w-4 h-4" />
+                      </button>
                     ) : (
-                      <>
-                        <button
-                          onClick={() => startEdit(d)}
-                          className="p-1.5 rounded transition-colors"
-                          style={{ color: C.muted }}
-                          onMouseEnter={(e) => (e.currentTarget.style.color = C.navy)}
-                          onMouseLeave={(e) => (e.currentTarget.style.color = C.muted)}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        {d.isActive ? (
-                          <button
-                            onClick={() => setConfirmDeactivate(d)}
-                            className="p-1.5 rounded transition-colors"
-                            style={{ color: C.muted }}
-                            onMouseEnter={(e) => (e.currentTarget.style.color = C.red)}
-                            onMouseLeave={(e) => (e.currentTarget.style.color = C.muted)}
-                          >
-                            <Power className="w-4 h-4" />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => reactivate(d)}
-                            className="p-1.5 rounded text-xs px-2"
-                            style={{ color: C.green }}
-                          >
-                            Reactivate
-                          </button>
-                        )}
-                      </>
+                      <button
+                        onClick={() => reactivate(d)}
+                        className="p-1.5 rounded text-xs px-2"
+                        style={{ color: C.green }}
+                      >
+                        Reactivate
+                      </button>
                     )}
                   </div>
                 </AdminTableCell>
@@ -285,6 +292,103 @@ const Departments = () => {
               className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none"
               style={{ backgroundColor: C.input, borderColor: C.border, color: C.text }}
             />
+          </div>
+        </form>
+      </AdminModal>
+
+      <AdminModal
+        open={!!editing}
+        onClose={() => setEditing(null)}
+        title={editing ? `Edit ${editing.code}` : "Edit department"}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setEditing(null)}
+              className="px-3 py-2 text-sm rounded-lg border"
+              style={{ borderColor: C.border, color: C.text }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="edit-dept-form"
+              disabled={submitting || !editForm.name.trim()}
+              className="px-3 py-2 text-sm rounded-lg font-medium text-white disabled:opacity-50"
+              style={{ backgroundColor: C.navy }}
+            >
+              Save
+            </button>
+          </>
+        }
+      >
+        <form id="edit-dept-form" onSubmit={saveEdit} className="space-y-4">
+          <div>
+            <label htmlFor="dept-name" className="block text-xs font-medium mb-1" style={{ color: C.muted }}>
+              Name
+            </label>
+            <input
+              id="dept-name"
+              value={editForm.name}
+              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              required
+              className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none"
+              style={{ backgroundColor: C.input, borderColor: C.border, color: C.text }}
+            />
+          </div>
+          <div>
+            <label htmlFor="dept-description" className="block text-xs font-medium mb-1" style={{ color: C.muted }}>
+              Description (optional)
+            </label>
+            <textarea
+              id="dept-description"
+              value={editForm.description}
+              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+              rows={2}
+              className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none"
+              style={{ backgroundColor: C.input, borderColor: C.border, color: C.text }}
+            />
+          </div>
+          <div>
+            <label htmlFor="dept-sla" className="block text-xs font-medium mb-1" style={{ color: C.muted }}>
+              First reply within (hours)
+            </label>
+            <input
+              id="dept-sla"
+              type="number"
+              min={1}
+              max={720}
+              value={editForm.slaThresholdHours}
+              onChange={(e) => setEditForm({ ...editForm, slaThresholdHours: e.target.value })}
+              placeholder="48 (default)"
+              className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none"
+              style={{ backgroundColor: C.input, borderColor: C.border, color: C.text }}
+            />
+            <p className="text-xs mt-1" style={{ color: C.muted }}>
+              An issue with no staff reply after this long is escalated. Leave empty for the 48-hour default.
+            </p>
+          </div>
+          <div>
+            <label htmlFor="dept-head" className="block text-xs font-medium mb-1" style={{ color: C.muted }}>
+              Escalations go to
+            </label>
+            <select
+              id="dept-head"
+              value={editForm.headUserId}
+              onChange={(e) => setEditForm({ ...editForm, headUserId: e.target.value })}
+              className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none"
+              style={{ backgroundColor: C.input, borderColor: C.border, color: C.text }}
+            >
+              <option value="">All staff in this department</option>
+              {deptStaff.map((s) => (
+                <option key={s._id} value={s._id}>
+                  {s.name}{s.staffTitle ? ` — ${s.staffTitle}` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs mt-1" style={{ color: C.muted }}>
+              The department head is told about overdue issues; administrators always are.
+            </p>
           </div>
         </form>
       </AdminModal>

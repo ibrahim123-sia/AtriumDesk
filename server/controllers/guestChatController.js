@@ -148,7 +148,9 @@ async function getPythonBackendResponse(question, context = {}) {
         university_short: context.branding?.universityShort || undefined,
         rag_config: context.ragConfig || undefined,
       }),
-      timeout: 30000, // 30 second timeout
+      // node-fetch v3 ignores a `timeout` option; this is what stops a stuck
+      // AI service from holding the request open forever.
+      signal: AbortSignal.timeout(60000),
     });
 
     if (!response.ok) {

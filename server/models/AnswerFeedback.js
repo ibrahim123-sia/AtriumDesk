@@ -12,6 +12,9 @@ export const answerFeedbackSchema = new mongoose.Schema(
     helpful: { type: Boolean, required: true },
     question: { type: String, trim: true, default: "" },
     confidenceTier: { type: String, default: null },
+    // Where the answer was given: in a chat, or on the new-issue form
+    // (the student said it answered their question before they filed).
+    context: { type: String, enum: ["chat", "issue_form"], default: "chat" },
   },
   { timestamps: true }
 );

@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Upload, X, FileText, Image as ImageIcon } from "lucide-react";
+import Markdown from "react-markdown";
+import { ArrowLeft, Upload, X, FileText, Image as ImageIcon, Lightbulb } from "lucide-react";
 import toast from "react-hot-toast";
-import { createIssue } from "../../redux/slices/issueSlice";
+import { createIssue, fetchAnswerSuggestion, recordSuggestionHelped } from "../../redux/slices/issueSlice";
+import { AnswerSources } from "../components/Message";
 import { fetchDepartments } from "../../redux/slices/departmentSlice";
 import { getPalette } from "../../administrator/utils/palette";
 
@@ -34,6 +36,11 @@ const CreateIssue = () => {
   const [category, setCategory] = useState("other");
   const [departmentId, setDepartmentId] = useState("");
   const [files, setFiles] = useState([]);
+  // An answer the knowledge base already has, offered before filing.
+  const [suggestion, setSuggestion] = useState(null);
+  const [checking, setChecking] = useState(false);
+  const askedRef = useRef("");
+  const chatbotEnabled = tenantBranding?.enabledFeatures?.chatbot !== false;
 
   const C = getPalette(isDark, tenantBranding);
 
@@ -69,6 +76,25 @@ const CreateIssue = () => {
       allowed.push(f);
     }
     setFiles((prev) => [...prev, ...allowed]);
+  };
+
+  // Once the student has described the problem (leaving the title or
+  // description field), ask the assistant — one request per distinct text.
+  const checkForAnswer = async () => {
+    const question = [title.trim(), description.trim().slice(0, 300)].filter(Boolean).join(". ");
+    if (!chatbotEnabled || title.trim().length < 12 || question === askedRef.current) return;
+    askedRef.current = question;
+    setChecking(true);
+    const result = await dispatch(fetchAnswerSuggestion(question)).unwrap();
+    setChecking(false);
+    if (askedRef.current !== question) return;
+    setSuggestion(result.success && result.answer ? { question, answer: result.answer, sources: result.sources } : null);
+  };
+
+  const onSuggestionHelped = async () => {
+    await dispatch(recordSuggestionHelped(suggestion.question));
+    toast.success("Glad that helped — no issue filed.");
+    navigate("/issues");
   };
 
   const removeFile = (idx) => {
@@ -110,12 +136,52 @@ const CreateIssue = () => {
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              onBlur={checkForAnswer}
               placeholder="Brief summary of your issue"
               maxLength={200}
               className="w-full px-3 py-2.5 rounded-lg border text-sm focus:outline-none"
               style={{ backgroundColor: C.input, borderColor: C.border, color: C.text }}
             />
           </div>
+
+          {checking && (
+            <p className="text-xs" style={{ color: C.muted }} aria-live="polite">
+              Checking whether we already have an answer…
+            </p>
+          )}
+          {suggestion && (
+            <div
+              className="p-5 rounded-xl border"
+              style={{ backgroundColor: C.surfaceAlt, borderColor: C.navy }}
+              aria-live="polite"
+            >
+              <p className="text-sm font-semibold mb-2 inline-flex items-center gap-2">
+                <Lightbulb className="w-4 h-4" style={{ color: C.navy }} /> This might already answer it
+              </p>
+              <div className="text-sm [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1">
+                <Markdown>{suggestion.answer}</Markdown>
+              </div>
+              <AnswerSources sources={suggestion.sources} color={C.muted} linkColor={C.navy} />
+              <div className="flex gap-2 mt-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={onSuggestionHelped}
+                  className="px-3 py-1.5 rounded-lg text-white text-sm font-medium"
+                  style={{ backgroundColor: C.navy }}
+                >
+                  Yes, that answers it
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSuggestion(null)}
+                  className="px-3 py-1.5 rounded-lg border text-sm"
+                  style={{ borderColor: C.border, color: C.text }}
+                >
+                  No, I still need help
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="grid md:grid-cols-2 gap-4">
             <div className="p-5 rounded-xl border" style={{ backgroundColor: C.surface, borderColor: C.border }}>
@@ -158,6 +224,7 @@ const CreateIssue = () => {
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              onBlur={checkForAnswer}
               rows={6}
               placeholder="Describe your issue in detail. Include relevant dates, IDs, screenshots references."
               className="w-full px-3 py-2.5 rounded-lg border text-sm focus:outline-none resize-y"

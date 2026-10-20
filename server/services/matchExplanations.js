@@ -54,7 +54,7 @@ async function callPythonExplain(profile, listing, matchState, gaps, extra) {
       skills: extra.skills ?? null,
       skill_gaps: extra.skillGaps ?? null,
     }),
-    timeout: 30000,
+    signal: AbortSignal.timeout(30000),
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");

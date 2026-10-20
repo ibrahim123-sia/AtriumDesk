@@ -15,7 +15,7 @@ import { Menu, X, ChevronDown } from "lucide-react";
  * the `md` breakpoint, per explicit ask for "industry standard" responsive
  * navigation.
  */
-const TopNavbar = ({ logoLabel = "AD", wordmark = "AtriumDesk", subLabel, roleLabel, navItems, maxVisibleTabs, avatarInitials, userName, userEmail, menuItems, C }) => {
+const TopNavbar = ({ logoLabel = "AD", wordmark = "AtriumDesk", subLabel, roleLabel, navItems, maxVisibleTabs, avatarInitials, userName, userEmail, menuItems, actions, C }) => {
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -126,6 +126,9 @@ const TopNavbar = ({ logoLabel = "AD", wordmark = "AtriumDesk", subLabel, roleLa
 
         <div className="flex-1 md:hidden" />
 
+        {/* Shown at every width (e.g. the notification bell). */}
+        {actions && <div className="flex items-center shrink-0">{actions}</div>}
+
         <div className="hidden md:flex items-center gap-2.5 shrink-0">
           {roleLabel && (
             <span
@@ -139,6 +142,8 @@ const TopNavbar = ({ logoLabel = "AD", wordmark = "AtriumDesk", subLabel, roleLa
           <div ref={avatarRef} className="relative">
             <button
               onClick={() => setAvatarOpen((v) => !v)}
+              aria-label="Account menu"
+              aria-expanded={avatarOpen}
               className="w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold text-xs"
               style={{ background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.28)" }}
             >
@@ -169,7 +174,12 @@ const TopNavbar = ({ logoLabel = "AD", wordmark = "AtriumDesk", subLabel, roleLa
         </div>
 
         {/* Mobile hamburger */}
-        <button className="md:hidden text-white p-1.5" onClick={() => setMobileOpen((v) => !v)}>
+        <button
+          className="md:hidden text-white p-1.5"
+          onClick={() => setMobileOpen((v) => !v)}
+          aria-label={mobileOpen ? "Close menu" : "Open menu"}
+          aria-expanded={mobileOpen}
+        >
           {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>

@@ -6,6 +6,7 @@ import moment from "moment";
 import toast from "react-hot-toast";
 import { fetchIssueById, addStudentReply, submitIssueFeedback, clearSelectedIssue } from "../../redux/slices/issueSlice";
 import { getPalette } from "../../administrator/utils/palette";
+import { DetailUnavailable } from "../components/DetailStates";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
 
@@ -15,6 +16,7 @@ const statusStyle = (status, isDark) => {
     "In Progress": { bg: isDark ? "#13314f" : "#E0F0FF", text: isDark ? "#7BB6F5" : "#1463B0" },
     Resolved: { bg: isDark ? "#163320" : "#E0F8E5", text: isDark ? "#7BD594" : "#1B7A33" },
     Closed: { bg: isDark ? "#2a2a2a" : "#EDEDED", text: isDark ? "#B5B5B5" : "#666666" },
+    Rejected: { bg: isDark ? "#3a1818" : "#FCE6E6", text: isDark ? "#F08D7B" : "#A8261B" },
   };
   return palette[status] || palette.Closed;
 };
@@ -23,6 +25,7 @@ const IssueDetail = () => {
   const { id } = useParams();
   const dispatch = useDispatch();
   const issue = useSelector((s) => s.issue.selectedIssue);
+  const loadError = useSelector((s) => s.issue.selectedIssueError);
   const theme = useSelector((s) => s.theme.theme);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
@@ -54,7 +57,7 @@ const IssueDetail = () => {
     setSending(false);
     if (result.success) {
       setReply("");
-      toast.success("Reply added");
+      toast.success(result.reopened ? "Reply sent — your issue is open again" : "Reply added");
     } else {
       toast.error(result.message || "Failed to send reply");
     }
@@ -75,6 +78,10 @@ const IssueDetail = () => {
     }
   };
 
+  if (loadError && !issue) {
+    return <DetailUnavailable message={loadError} backTo="/issues" backLabel="Back to issues" C={C} />;
+  }
+
   if (!issue) {
     return (
       <div className="h-full flex items-center justify-center" style={{ backgroundColor: C.bg, color: C.muted }}>
@@ -84,6 +91,8 @@ const IssueDetail = () => {
   }
 
   const sStyle = statusStyle(issue.status, isDark);
+  // A resolved issue can still be rated after it auto-closes.
+  const canRate = (issue.status === "Resolved" || (issue.status === "Closed" && issue.resolvedAt)) && !issue.feedback?.submittedAt;
 
   return (
     <div className="h-full overflow-y-auto" style={{ backgroundColor: C.bg, color: C.text }}>
@@ -113,6 +122,15 @@ const IssueDetail = () => {
           <p className="text-sm whitespace-pre-wrap" style={{ color: C.text }}>
             {issue.description}
           </p>
+
+          {issue.status === "Rejected" && issue.rejectionReason && (
+            <div
+              className="mt-4 p-3 rounded-lg border text-sm"
+              style={{ borderColor: C.red, backgroundColor: isDark ? "#2c1414" : "#FDECEC", color: C.text }}
+            >
+              <strong>Why it was rejected:</strong> {issue.rejectionReason}
+            </div>
+          )}
 
           {issue.attachments?.length > 0 && (
             <div className="mt-4 pt-4 border-t" style={{ borderColor: C.border }}>
@@ -176,7 +194,7 @@ const IssueDetail = () => {
           })}
         </div>
 
-        {issue.status === "Resolved" && !issue.feedback?.submittedAt && (
+        {canRate && (
           <form
             onSubmit={onSubmitFeedback}
             className="p-4 rounded-xl border mb-5"
@@ -257,8 +275,21 @@ const IssueDetail = () => {
           </div>
         )}
 
-        {issue.status !== "Closed" && (
+        {issue.status === "Closed" ? (
+          <div
+            className="p-4 rounded-xl border text-sm flex items-center justify-between gap-3 flex-wrap"
+            style={{ backgroundColor: C.surfaceAlt, borderColor: C.border, color: C.muted }}
+          >
+            <span>This issue is closed. Still need help with it?</span>
+            <Link to="/issues/new" className="font-medium" style={{ color: C.navy }}>File a new issue →</Link>
+          </div>
+        ) : (
           <form onSubmit={onSendReply} className="p-4 rounded-xl border" style={{ backgroundColor: C.surface, borderColor: C.border }}>
+            {issue.status === "Resolved" && (
+              <p className="text-xs mb-2" style={{ color: C.muted }}>
+                Not actually sorted? Reply here and it goes back to the department.
+              </p>
+            )}
             <textarea
               value={reply}
               onChange={(e) => setReply(e.target.value)}

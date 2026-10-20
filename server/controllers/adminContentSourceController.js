@@ -19,8 +19,36 @@ import { isValidInternalSecret } from "../services/verifyInternalSecret.js";
 const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://localhost:8000";
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
 
+// A crawl that never reports back (the AI service restarted, or was put to
+// sleep, mid-run) would otherwise leave the status "running" for good and
+// block every later scrape with "already running".
+const STALE_SCRAPE_MS = 6 * 60 * 60 * 1000;
+const isStaleRun = (contentSource) =>
+  contentSource?.status === "running" &&
+  contentSource.startedAt &&
+  Date.now() - new Date(contentSource.startedAt).getTime() > STALE_SCRAPE_MS;
+
+const markScrapeFailed = async (tenantId, message) => {
+  try {
+    await getTenantModel().updateOne(
+      { _id: tenantId, "contentSource.status": "running" },
+      { $set: { "contentSource.status": "failed", "contentSource.completedAt": new Date(), "contentSource.error": message } }
+    );
+    invalidateTenantCache();
+  } catch (error) {
+    console.error("markScrapeFailed error:", error.message);
+  }
+};
+
 export const getContentSourceStatus = async (req, res) => {
-  res.json({ success: true, contentSource: req.tenant.contentSource });
+  const contentSource = req.tenant.contentSource;
+  if (isStaleRun(contentSource)) {
+    const error = "No result came back from the AI service — the scrape was interrupted. Start it again.";
+    await markScrapeFailed(req.tenant._id, error);
+    const current = typeof contentSource.toObject === "function" ? contentSource.toObject() : contentSource;
+    return res.json({ success: true, contentSource: { ...current, status: "failed", completedAt: new Date(), error } });
+  }
+  res.json({ success: true, contentSource });
 };
 
 export const triggerContentScrape = async (req, res) => {
@@ -39,7 +67,7 @@ export const triggerContentScrape = async (req, res) => {
     const tenant = await Tenant.findById(req.tenant._id);
     if (!tenant) return res.status(404).json({ success: false, message: "Tenant not found" });
 
-    if (tenant.contentSource?.status === "running") {
+    if (tenant.contentSource?.status === "running" && !isStaleRun(tenant.contentSource)) {
       return res.status(409).json({ success: false, message: "A scrape is already running for this university" });
     }
 
@@ -59,8 +87,8 @@ export const triggerContentScrape = async (req, res) => {
 
     // Deliberately not awaited — Python's own /internal/scrape-site endpoint
     // responds 202 immediately and does the real work as a background task,
-    // reporting back later. A network error firing the request itself
-    // (rare — Python being down) is still caught so it doesn't crash Node.
+    // reporting back later. If Python is down or refuses the job, the run is
+    // marked failed right away instead of showing "running" forever.
     fetch(`${PYTHON_BACKEND_URL}/internal/scrape-site`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-internal-secret": INTERNAL_SECRET || "" },
@@ -70,7 +98,14 @@ export const triggerContentScrape = async (req, res) => {
         allowed_domain: tenant.contentSource.allowedDomain,
         base_url: baseUrl,
       }),
-    }).catch((error) => console.error("triggerContentScrape: failed to reach Python:", error.message));
+    })
+      .then((response) => {
+        if (!response.ok) markScrapeFailed(tenant._id, `The AI service refused the scrape (HTTP ${response.status}).`);
+      })
+      .catch((error) => {
+        console.error("triggerContentScrape: failed to reach Python:", error.message);
+        markScrapeFailed(tenant._id, "Couldn't reach the AI service to start the scrape.");
+      });
 
     res.status(202).json({ success: true, contentSource: tenant.contentSource });
   } catch (error) {

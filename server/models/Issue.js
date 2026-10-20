@@ -30,6 +30,19 @@ const replySchema = new mongoose.Schema(
   { _id: true }
 );
 
+// Staff-only working notes on an issue ("called the student", "waiting on
+// the registrar"). Never part of a student's view: the path is select:false,
+// so only queries that ask for "+internalNotes" (the staff views) load it.
+const internalNoteSchema = new mongoose.Schema(
+  {
+    authorId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    authorName: { type: String, required: true },
+    message: { type: String, required: true, trim: true, maxlength: 4000 },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: true }
+);
+
 export const issueSchema = new mongoose.Schema(
   {
     studentId: {
@@ -72,6 +85,7 @@ export const issueSchema = new mongoose.Schema(
     rejectionReason: { type: String, trim: true, default: "" },
     attachments: { type: [attachmentSchema], default: [] },
     replies: { type: [replySchema], default: [] },
+    internalNotes: { type: [internalNoteSchema], default: [], select: false },
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -80,7 +94,7 @@ export const issueSchema = new mongoose.Schema(
     // Last write metadata — used by the staff UI to show "Sara just resolved this"
     // banners and for concurrency-conflict messages.
     lastEvent: {
-      type: { type: String, enum: ["created", "reply", "status", "assign", "escalate"], default: "created" },
+      type: { type: String, enum: ["created", "reply", "status", "assign", "escalate", "reopen", "transfer"], default: "created" },
       byUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
       byName: { type: String, default: "" },
       byRole: { type: String, default: "" },

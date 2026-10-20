@@ -11,7 +11,9 @@ import {
 } from "../redux/slices/notificationSlice";
 import { getPalette } from "../administrator/utils/palette";
 
-const NotificationBell = () => {
+// `onDark`: sits on the teal top navbar (staff/admin) — white icon, panel
+// opens to the left so it stays on screen.
+const NotificationBell = ({ onDark = false }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { notifications, unreadCount } = useSelector((s) => s.notification);
@@ -61,10 +63,11 @@ const NotificationBell = () => {
       <button
         onClick={() => setOpen((v) => !v)}
         className="relative p-2 rounded-lg transition-colors"
-        style={{ color: C.text }}
-        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = C.surfaceAlt)}
+        style={{ color: onDark ? "#fff" : C.text }}
+        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = onDark ? "rgba(255,255,255,.16)" : C.surfaceAlt)}
         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-        aria-label="Notifications"
+        aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications"}
+        aria-expanded={open}
       >
         <Bell className="w-5 h-5" />
         {unreadCount > 0 && (
@@ -79,7 +82,7 @@ const NotificationBell = () => {
 
       {open && (
         <div
-          className="absolute left-0 mt-2 w-80 max-w-[calc(100vw-2rem)] max-h-96 overflow-hidden rounded-xl border shadow-lg z-50 flex flex-col"
+          className={`absolute ${onDark ? "right-0" : "left-0"} mt-2 w-80 max-w-[calc(100vw-2rem)] max-h-96 overflow-hidden rounded-xl border shadow-lg z-50 flex flex-col`}
           style={{ backgroundColor: C.surface, borderColor: C.border, color: C.text }}
         >
           <div

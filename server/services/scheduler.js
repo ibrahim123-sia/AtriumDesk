@@ -123,18 +123,17 @@ export async function runSlaEscalationCheck() {
         tenantSlug: tenant.slug,
       };
 
-      if (dept.headUserId) {
-        const head = await models.User.findById(dept.headUserId);
-        if (head) await notify(models.Notification, head, notifyPayload);
-      } else {
-        const deptStaff = await models.User.find({
-          role: "staff",
-          department: dept._id,
-          isBlocked: false,
-        });
-        for (const staffMember of deptStaff) {
-          await notify(models.Notification, staffMember, notifyPayload);
-        }
+      // The head, while they're still an active member of this department —
+      // a head who was blocked or moved elsewhere would otherwise be the only
+      // person told, and the breach would reach nobody who can act on it.
+      const head = dept.headUserId
+        ? await models.User.findOne({ _id: dept.headUserId, role: "staff", department: dept._id, isBlocked: false })
+        : null;
+      const recipients = head
+        ? [head]
+        : await models.User.find({ role: "staff", department: dept._id, isBlocked: false });
+      for (const staffMember of recipients) {
+        await notify(models.Notification, staffMember, notifyPayload);
       }
 
       for (const admin of admins) {
@@ -362,6 +361,52 @@ export async function runDueSourceScrapes() {
   return due.length;
 }
 
+// A resolved issue the student hasn't come back to in this long is closed.
+// Replying within the window reopens it instead (issueController).
+export const AUTO_CLOSE_RESOLVED_DAYS = 7;
+
+/**
+ * Closes issues that have sat in Resolved for AUTO_CLOSE_RESOLVED_DAYS with no
+ * further activity, and tells the student. Keeps the open queues and the
+ * "Resolved" tab meaningful; the student can still rate the resolution.
+ */
+export async function runAutoCloseResolvedIssues(now = new Date()) {
+  const cutoff = new Date(now.getTime() - AUTO_CLOSE_RESOLVED_DAYS * DAY_MS);
+  let closed = 0;
+  await forEachActiveTenant(async (tenant, models) => {
+    const stale = await models.Issue.find({ status: "Resolved", updatedAt: { $lt: cutoff } }).populate("department", "code name");
+    for (const issue of stale) {
+      issue.status = "Closed";
+      issue.lastEvent = {
+        type: "status",
+        byUserId: null,
+        byName: "System",
+        byRole: "system",
+        at: now,
+        note: `Resolved → Closed (no reply in ${AUTO_CLOSE_RESOLVED_DAYS} days)`,
+      };
+      await issue.save();
+      closed += 1;
+      const student = await models.User.findById(issue.studentId);
+      if (student) {
+        await notify(models.Notification, student, {
+          type: "issue_status_changed",
+          issueId: issue._id,
+          message: `Your issue "${issue.title}" was closed`,
+          link: `/issues/${issue._id}`,
+          emailSubject: "Your issue was closed",
+          emailHeading: "Your issue was closed",
+          emailBody: safeHtml`<strong>${issue.title}</strong><br/><br/>It was marked resolved ${AUTO_CLOSE_RESOLVED_DAYS} days ago with no further replies, so it's now closed. If you still need help, please file a new issue.`,
+          branding: tenant.branding,
+          tenantSlug: tenant.slug,
+        });
+      }
+    }
+  });
+  if (closed) console.log(`Auto-close: ${closed} resolved issue(s) closed`);
+  return closed;
+}
+
 // Hour of day (server local time — set TZ) each daily job runs at. Shared by
 // startScheduler()'s cron expressions and runScheduledJobs(), so in-process
 // cron and an external hourly trigger run them at the same time. Order
@@ -371,6 +416,7 @@ export const DAILY_JOB_HOURS = {
   chromaBackup: 1,
   deadlineReminders: 2,
   expiredListings: 3,
+  autoCloseIssues: 4,
   digests: 6,
 };
 
@@ -378,6 +424,7 @@ const DAILY_JOBS = {
   chromaBackup: () => runChromaBackupCheck(),
   deadlineReminders: () => runDeadlineReminderCheck(),
   expiredListings: () => runExpiredListingsCheck(),
+  autoCloseIssues: () => runAutoCloseResolvedIssues(),
   digests: () => runDigestCheck(),
 };
 
@@ -459,6 +506,12 @@ export function startScheduler() {
     });
   });
 
+  cron.schedule(`0 ${DAILY_JOB_HOURS.autoCloseIssues} * * *`, () => {
+    runAutoCloseResolvedIssues().catch((error) => {
+      console.error("runAutoCloseResolvedIssues failed:", error);
+    });
+  });
+
   // Once a day; internally splits daily-vs-weekly students by cadence
   // (weekly only fires on the Monday run) rather than needing two crons.
   cron.schedule(`0 ${DAILY_JOB_HOURS.digests} * * *`, () => {
@@ -475,5 +528,5 @@ export function startScheduler() {
     });
   });
 
-  console.log("Scheduler started (SLA escalation: every 30 minutes; listing expiry/reminders/digests/chroma backup: daily)");
+  console.log("Scheduler started (SLA escalation: every 30 minutes; listing expiry/reminders/issue auto-close/digests/chroma backup: daily)");
 }

@@ -188,7 +188,11 @@ const AssistantInsights = ({ a, C }) => {
       value: pct(a.feedback.helpfulRate),
       hint: a.feedback.total ? `${a.feedback.total} rating${a.feedback.total === 1 ? "" : "s"}` : "no ratings yet",
     },
-    { label: "Turned into a ticket", value: a.handoffs, hint: "chat handoffs to a department" },
+    {
+      label: "Turned into a ticket",
+      value: a.handoffs,
+      hint: `chat handoffs · ${a.answeredBeforeTicket || 0} answered on the issue form instead`,
+    },
   ];
   return (
     <section className="rounded-xl border p-4" style={{ backgroundColor: C.surface, borderColor: C.border }}>

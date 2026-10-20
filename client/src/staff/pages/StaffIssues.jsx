@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Link } from "react-router-dom";
-import { FileText, Clock, RefreshCw, Building2, AlertTriangle } from "lucide-react";
+import { FileText, Clock, RefreshCw, Building2, AlertTriangle, UserCheck } from "lucide-react";
 import moment from "moment";
 import { fetchDeptIssues } from "../../redux/slices/issueSlice";
 import { getPalette } from "../../administrator/utils/palette";
@@ -22,18 +22,20 @@ const statusStyle = (status, isDark) => {
 const StaffIssues = () => {
   const dispatch = useDispatch();
   const issues = useSelector((s) => s.issue.deptIssues);
+  const counts = useSelector((s) => s.issue.deptIssueCounts);
   const loading = useSelector((s) => s.issue.loading);
   const user = useSelector((s) => s.auth.user);
   const theme = useSelector((s) => s.theme.theme);
   const [filter, setFilter] = useState("All");
   const [escalatedOnly, setEscalatedOnly] = useState(false);
+  const [mineOnly, setMineOnly] = useState(false);
   const isDark = theme === "dark";
   const tenantBranding = useSelector((s) => s.tenant.branding);
 
   const C = getPalette(isDark, tenantBranding);
 
   useEffect(() => {
-    const arg = { status: filter === "All" ? undefined : filter, escalated: escalatedOnly };
+    const arg = { status: filter === "All" ? undefined : filter, escalated: escalatedOnly, mine: mineOnly };
     dispatch(fetchDeptIssues(arg));
     const id = setInterval(() => {
       if (document.visibilityState === "visible") {
@@ -41,12 +43,7 @@ const StaffIssues = () => {
       }
     }, 20000);
     return () => clearInterval(id);
-  }, [dispatch, filter, escalatedOnly]);
-
-  const counts = STATUSES.reduce((acc, s) => {
-    acc[s] = s === "All" ? issues.length : issues.filter((i) => i.status === s).length;
-    return acc;
-  }, {});
+  }, [dispatch, filter, escalatedOnly, mineOnly]);
 
   return (
     <div className="h-full overflow-y-auto" style={{ backgroundColor: C.bg, color: C.text }}>
@@ -60,7 +57,7 @@ const StaffIssues = () => {
             </p>
           </div>
           <button
-            onClick={() => dispatch(fetchDeptIssues({ status: filter === "All" ? undefined : filter, escalated: escalatedOnly }))}
+            onClick={() => dispatch(fetchDeptIssues({ status: filter === "All" ? undefined : filter, escalated: escalatedOnly, mine: mineOnly }))}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border"
             style={{ borderColor: C.border, color: C.muted }}
           >
@@ -80,7 +77,7 @@ const StaffIssues = () => {
                 color: filter === s ? "#fff" : C.text,
               }}
             >
-              {s} {counts[s] !== undefined && <span className="opacity-75">({counts[s]})</span>}
+              {s} <span className="opacity-75">({counts[s] || 0})</span>
             </button>
           ))}
           <button
@@ -94,6 +91,19 @@ const StaffIssues = () => {
           >
             <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
             Escalated only
+          </button>
+          <button
+            onClick={() => setMineOnly((v) => !v)}
+            aria-pressed={mineOnly}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border transition-all"
+            style={{
+              borderColor: mineOnly ? C.navy : C.border,
+              backgroundColor: mineOnly ? C.navy : "transparent",
+              color: mineOnly ? "#fff" : C.text,
+            }}
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            Assigned to me
           </button>
         </div>
 

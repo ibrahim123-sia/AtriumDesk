@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { getPalette } from "../../administrator/utils/palette";
 import { logoutUser } from "../../redux/slices/authSlice";
 import TopNavbar from "../../components/layouts/TopNavbar";
+import NotificationBell from "../../components/NotificationBell";
 
 const BASE_NAV = [
   { to: "/staff/dashboard", label: "Dashboard" },
@@ -54,6 +55,7 @@ const StaffShell = () => {
         avatarInitials={initials}
         userName={user?.name}
         userEmail={user?.email}
+        actions={<NotificationBell onDark />}
         menuItems={[
           { label: "Profile", to: "/staff/profile" },
           { label: "Sign out", danger: true, onClick: handleLogout },

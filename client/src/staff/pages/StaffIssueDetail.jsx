@@ -24,6 +24,17 @@ import {
   clearSelectedIssue,
 } from "../../redux/slices/issueSlice";
 import { getPalette } from "../../administrator/utils/palette";
+import { InternalNotes, TransferPanel, SavedReplyPicker } from "../components/IssueStaffTools";
+import { DetailUnavailable } from "../../student/components/DetailStates";
+
+// What the last change was, for the "X just …" banner and the poll toast.
+const describeEvent = (ev) =>
+  ev.type === "status" ? `changed status (${ev.note || "changed"})` :
+  ev.type === "reply" ? (ev.byRole === "student" ? "replied" : "added a reply") :
+  ev.type === "assign" ? `reassigned (${ev.note || ""})` :
+  ev.type === "reopen" ? "reopened it" :
+  ev.type === "transfer" ? `transferred it (${ev.note || ""})` :
+  "made changes";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
 const STATUSES = ["Pending", "In Progress", "Resolved", "Closed", "Rejected"];
@@ -107,7 +118,7 @@ const AttachmentModal = ({ attachment, onClose, C }) => {
 // Assignee strip — shows who owns the issue + Assign-to-me / Reassign
 // ---------------------------------------------------------------------------
 
-const AssigneeStrip = ({ issue, currentUser, deptStaff, onAssign, busy, C }) => {
+const AssigneeStrip = ({ issue, currentUser, deptStaff, onAssign, busy, C, children }) => {
   const [picking, setPicking] = useState(false);
   const assignee = issue.assignedTo;
   const mine = assignee && assignee._id === currentUser?._id;
@@ -137,7 +148,8 @@ const AssigneeStrip = ({ issue, currentUser, deptStaff, onAssign, busy, C }) => 
         )}
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex items-center gap-2 flex-wrap">
+        {children}
         {!mine && (
           <button
             type="button"
@@ -200,6 +212,7 @@ const StaffIssueDetail = () => {
   const { id } = useParams();
   const dispatch = useDispatch();
   const issue = useSelector((s) => s.issue.selectedIssue);
+  const loadError = useSelector((s) => s.issue.selectedIssueError);
   const deptStaff = useSelector((s) => s.issue.deptStaff);
   const theme = useSelector((s) => s.theme.theme);
   const user = useSelector((s) => s.auth.user);
@@ -248,12 +261,7 @@ const StaffIssueDetail = () => {
         ? ev.byUserId._id === user?._id
         : false;
       if (!byMe && ev?.byName) {
-        const what =
-          ev.type === "status" ? `updated status (${ev.note || "changed"})` :
-          ev.type === "reply"  ? "added a reply" :
-          ev.type === "assign" ? `reassigned (${ev.note || ""})` :
-          "made changes";
-        toast(`${ev.byName} ${what}`, { icon: "🔄", duration: 4000 });
+        toast(`${ev.byName} ${describeEvent(ev)}`, { icon: "🔄", duration: 4000 });
       }
     }
     seenVersionRef.current = v;
@@ -340,13 +348,12 @@ const StaffIssueDetail = () => {
     if (issue.lastEvent.byUserId && issue.lastEvent.byUserId._id === user?._id) return null;
     const ageMs = Date.now() - new Date(issue.lastEvent.at).getTime();
     if (ageMs > 30_000) return null;
-    return `${issue.lastEvent.byName} just ${
-      issue.lastEvent.type === "status" ? `changed status (${issue.lastEvent.note || ""})` :
-      issue.lastEvent.type === "reply" ? "replied" :
-      issue.lastEvent.type === "assign" ? `reassigned (${issue.lastEvent.note})` :
-      "made changes"
-    }`;
+    return `${issue.lastEvent.byName} just ${describeEvent(issue.lastEvent)}`;
   }, [issue, user]);
+
+  if (loadError && !issue) {
+    return <DetailUnavailable message={loadError} backTo="/staff/issues" backLabel="Back to inbox" C={C} />;
+  }
 
   if (!issue) {
     return (
@@ -456,8 +463,12 @@ const StaffIssueDetail = () => {
             onAssign={handleAssign}
             busy={assignBusy}
             C={C}
-          />
+          >
+            <TransferPanel issue={issue} C={C} />
+          </AssigneeStrip>
         </div>
+
+        <InternalNotes issue={issue} C={C} isDark={isDark} />
 
         {/* Conversation */}
         <div className="mb-3 text-sm font-semibold uppercase tracking-wide" style={{ color: C.muted }}>
@@ -507,7 +518,19 @@ const StaffIssueDetail = () => {
           className="p-4 rounded-xl border space-y-3"
           style={{ backgroundColor: C.surface, borderColor: C.border }}
         >
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="staff-reply" className="text-xs font-semibold uppercase" style={{ color: C.muted }}>
+              Reply to the student
+            </label>
+            <SavedReplyPicker
+              issue={issue}
+              reply={reply}
+              onInsert={(text) => setReply((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${text}` : text))}
+              C={C}
+            />
+          </div>
           <textarea
+            id="staff-reply"
             value={reply}
             onChange={(e) => setReply(e.target.value)}
             rows={3}

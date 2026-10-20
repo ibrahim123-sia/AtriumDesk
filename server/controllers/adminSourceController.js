@@ -195,7 +195,7 @@ async function findDuplicateListing(tenantSlug, type, data) {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-internal-secret": INTERNAL_SECRET || "" },
       body: JSON.stringify({ tenant_slug: tenantSlug, listing_type: type, data }),
-      timeout: 15000,
+      signal: AbortSignal.timeout(15000),
     });
     if (!response.ok) return null;
     const body = await response.json();
@@ -224,7 +224,7 @@ export async function embedListingAsync(tenantSlug, listing) {
         listing_type: listing.listingType,
         data: listing.toObject(),
       }),
-      timeout: 15000,
+      signal: AbortSignal.timeout(15000),
     });
   } catch (error) {
     console.error("embedListingAsync error:", error.message);
@@ -236,7 +236,7 @@ export async function removeListingEmbedding(tenantSlug, listingId) {
   try {
     await fetch(
       `${PYTHON_BACKEND_URL}/listings/embed/${listingId}?tenant_slug=${encodeURIComponent(tenantSlug)}`,
-      { method: "DELETE", headers: { "x-internal-secret": INTERNAL_SECRET || "" }, timeout: 15000 }
+      { method: "DELETE", headers: { "x-internal-secret": INTERNAL_SECRET || "" }, signal: AbortSignal.timeout(15000) }
     );
   } catch (error) {
     console.error("removeListingEmbedding error:", error.message);
@@ -341,7 +341,8 @@ export async function performScrape(models, { url, type, sourceId = null, tenant
       method: "POST",
       headers: { "Content-Type": "application/json", "x-internal-secret": INTERNAL_SECRET || "" },
       body: JSON.stringify({ url, type }),
-      timeout: 30000,
+      // A JS-rendered page can take a while to crawl.
+      signal: AbortSignal.timeout(90000),
     });
     if (!response.ok) {
       const detail = await response.text().catch(() => "");

@@ -42,12 +42,14 @@ export const createDepartment = createAsyncThunk(
 
 export const updateDepartment = createAsyncThunk(
   "department/update",
-  async ({ id, name, description, isActive }, { getState }) => {
+  async ({ id, name, description, isActive, headUserId, slaThresholdHours }, { getState }) => {
     try {
       const body = {};
       if (name !== undefined) body.name = name;
       if (description !== undefined) body.description = description;
       if (isActive !== undefined) body.isActive = isActive;
+      if (headUserId !== undefined) body.headUserId = headUserId;
+      if (slaThresholdHours !== undefined) body.slaThresholdHours = slaThresholdHours;
       const { data } = await axios.patch(`/api/department/${id}`, body, authHeader(getState));
       return data;
     } catch (error) {

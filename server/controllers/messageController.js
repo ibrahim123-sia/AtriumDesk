@@ -12,8 +12,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://localhost:8000";
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
 
-// Helper function to call Python backend
-async function getPythonBackendResponse(question, context = {}) {
+// Helper function to call Python backend (also used by the new-issue form's
+// answer suggestion in issueController).
+export async function getPythonBackendResponse(question, context = {}) {
   try {
     const response = await fetch(`${PYTHON_BACKEND_URL}/ask`, {
       method: "POST",
@@ -40,7 +41,9 @@ async function getPythonBackendResponse(question, context = {}) {
         university_short: context.branding?.universityShort || undefined,
         rag_config: context.ragConfig || undefined,
       }),
-      timeout: 30000,
+      // node-fetch v3 ignores a `timeout` option; this is what stops a stuck
+      // AI service from holding the request open forever.
+      signal: AbortSignal.timeout(context.timeoutMs || 60000),
     });
 
     if (!response.ok) {
@@ -63,7 +66,7 @@ async function getPythonBackendResponse(question, context = {}) {
 // Super Admin Usage tab — fire-and-forget, same resilience style as
 // logIfFailedQuestion above. `usage` is null on a cache-hit/no-LLM-call
 // answer (see python/rag.py's ask()) — nothing to log in that case.
-async function logAiUsage(models, usage, { userType, userId, endpoint }) {
+export async function logAiUsage(models, usage, { userType, userId, endpoint }) {
   if (!usage) return;
   try {
     await models.AiUsageLog.create({
@@ -178,7 +181,7 @@ async function transcribeWithPython(audioPath) {
       method: "POST",
       body: form,
       headers: { ...form.getHeaders(), "x-internal-secret": INTERNAL_SECRET || "" },
-      timeout: 120000, // Whisper on CPU can take a while on long clips
+      signal: AbortSignal.timeout(120000), // Whisper on CPU can take a while on long clips
     });
 
     if (!response.ok) {
@@ -667,7 +670,7 @@ export const transcriptionHealth = async (req, res) => {
           "x-internal-secret": INTERNAL_SECRET || "",
         },
         body: JSON.stringify({ question: "test" }),
-        timeout: 5000,
+        signal: AbortSignal.timeout(5000),
       });
       pythonBackendHealthy = testResponse.ok;
     } catch (error) {
