@@ -163,6 +163,62 @@ Log in as the admin you seeded, create departments + staff from the admin panel,
 
 ---
 
+## ☁️ Deploying to Cloudflare
+
+Everything runs on Cloudflare; MongoDB stays on Atlas (one cluster, every tenant's database on it).
+
+| Part | Runs on | Config |
+| --- | --- | --- |
+| Web client | Workers static assets (`atriumdesk-web`), SPA fallback | `client/wrangler.jsonc` |
+| API server (`server/`) | Cloudflare Container `ApiServer` — `basic`, 1 GiB | `server/Dockerfile` |
+| AI service (`python/`) | Cloudflare Container `AiService` — `standard-1`, 4 GiB; models + Chromium baked into the image | `python/Dockerfile` |
+| Front door | Worker `atriumdesk-api`: `/uploads/*` → R2, `/ai/*` → AI service, everything else → API server | `cloudflare/` |
+| Files | R2 bucket `atriumdesk-uploads`: uploads, the knowledge-base snapshot and its daily backups | — |
+| Background jobs | Cron Trigger every hour → `POST /api/admin/internal/run-jobs` | `cloudflare/wrangler.jsonc` |
+
+Containers sleep when idle and their disks are wiped on every sleep or redeploy, so:
+
+- **Uploads** (attachments, avatars, tenant logos, activity images) are copied to R2 as they are saved (`server/services/fileStore.js`), and the Worker serves `/uploads/*` from the bucket.
+- **The knowledge base** (ChromaDB — every tenant's collection) is restored from R2 on startup and saved back after changes (`python/kb_snapshot.py`); the daily backup goes to `kb/backups/` in the bucket, keeping 14.
+- **Background jobs** don't use in-process timers (`DISABLE_SCHEDULERS=true`): the hourly cron runs SLA escalation, wakes the AI service only when a recurring source is due, and runs the daily jobs at their hour in `TZ` (backup 1am, reminders 2am, listing expiry 3am, digests 6am).
+- All of this is a no-op without the `R2_*` / `DISABLE_SCHEDULERS` settings, so local development is unchanged.
+
+**You need:** the Workers Paid plan ($5/month, required for Containers) with R2 enabled, a MongoDB Atlas cluster that accepts connections from anywhere (`0.0.0.0/0` — containers have no fixed IP), and Docker — or the **Deploy to Cloudflare** GitHub Actions workflow, whose runners have Docker.
+
+```bash
+# 1. Login + bucket (once)
+cd cloudflare && npm install
+npx wrangler login
+npx wrangler r2 bucket create atriumdesk-uploads
+
+# 2. Edit cloudflare/wrangler.jsonc → vars: PUBLIC_URL, CLIENT_URL, R2_ACCOUNT_ID
+
+# 3. Secrets (once; values from server/.env and python/.env).
+#    R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY: dashboard → R2 → Manage API tokens
+#    → "Object Read & Write" on atriumdesk-uploads.
+for s in MONGODB_URI JWT_SECRET PLATFORM_JWT_SECRET INTERNAL_SECRET FIELD_ENCRYPTION_KEY \
+         R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY GROQ_API_KEY GEMINI_API_KEY EMAIL_USER EMAIL_PASS; do
+  npx wrangler secret put $s
+done                                  # optional: GROQ_API_KEY_2, GROQ_API_KEY_3
+
+# 4. Backend: Worker + both containers (Docker must be running)
+npm run deploy
+
+# 5. Seed R2 with what only exists locally (R2_* set in the environment)
+cd ../python && python run.py push-kb        # local chroma_db/ → the AI service's knowledge base
+cd ../server && node scripts/pushUploads.js  # local uploads/ → the bucket
+
+# 6. Web client
+cd ../client
+VITE_SERVER_URL=https://atriumdesk-api.<you>.workers.dev \
+VITE_PYTHON_URL=https://atriumdesk-api.<you>.workers.dev/ai \
+npm run build && npx wrangler deploy
+```
+
+Without Docker, use **Actions → Deploy to Cloudflare → Run workflow** (`.github/workflows/deploy-cloudflare.yml`) for steps 4 and 6 — it needs the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` and the repository variables `VITE_SERVER_URL` / `VITE_PYTHON_URL`. A new database is seeded from your machine against Atlas with `node scripts/seedTenant.js` (in `server/`). `npm run logs` (in `cloudflare/`) tails the Worker; the containers' logs are in the dashboard under Workers → `atriumdesk-api` → Containers.
+
+---
+
 ## 📁 Project Structure
 
 ```
@@ -199,7 +255,10 @@ AtriumDesk/
 │   ├── database.py               # ChromaDB ops (one collection per tenant)
 │   ├── moderation.py             # English + Roman-Urdu profanity check (safety filter — kept even though the chatbot replies in English only)
 │   ├── scraper.py                # self-service per-tenant website scraper
+│   ├── kb_snapshot.py            # knowledge-base snapshot to R2 (Cloudflare)
 │   └── chroma_db/                # persistent vector store (gitignored)
+├── cloudflare/                   # Worker + container config for Cloudflare
+└── .github/workflows/            # deploy-cloudflare.yml ("Deploy to Cloudflare")
 ```
 
 ---
