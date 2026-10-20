@@ -10,18 +10,26 @@ import nodemailer from "nodemailer";
 import { getTenantModel } from "../models/platform/Tenant.js";
 import { decryptField } from "./fieldCrypto.js";
 
+// The platform-default sender. Gmail (EMAIL_USER/EMAIL_PASS, an app
+// password) unless SMTP_* points somewhere else — any provider with an SMTP
+// relay works without a code change, e.g. Brevo (smtp-relay.brevo.com:587)
+// or Resend (smtp.resend.com:465, SMTP_SECURE=true). An empty SMTP_USER
+// means no authentication (a local relay or test sink).
+//
 // rejectUnauthorized:false disabled TLS certificate validation on the
-// STARTTLS connection to Gmail (MITM risk on the OTP/reset codes this
-// carries), and pinning ciphers:SSLv3 forced a legacy, weak cipher suite —
-// neither is needed for a normal connection to smtp.gmail.com:587.
+// STARTTLS connection (MITM risk on the OTP/reset codes this carries), and
+// pinning ciphers:SSLv3 forced a legacy, weak cipher suite — neither is
+// needed for a normal connection.
+const SMTP_HOST = process.env.SMTP_HOST || "smtp.gmail.com";
+const SMTP_USER = process.env.SMTP_USER ?? process.env.EMAIL_USER;
+const SMTP_PASS = process.env.SMTP_PASS ?? process.env.EMAIL_PASS;
+const DEFAULT_FROM_EMAIL = process.env.EMAIL_FROM || SMTP_USER || process.env.EMAIL_USER;
+
 const defaultTransporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
+  host: SMTP_HOST,
+  port: Number(process.env.SMTP_PORT) || 587,
+  secure: process.env.SMTP_SECURE === "true",
+  auth: SMTP_USER ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
 });
 
 let verifiedDefault = false;
@@ -30,10 +38,12 @@ export function verifyDefaultTransporter() {
   verifiedDefault = true;
   defaultTransporter.verify((error) => {
     if (error) {
-      console.log("❌ Gmail SMTP Error:", error.message);
-      console.log("Fix: 1) Remove spaces from App Password 2) Enable 2FA on Google");
+      console.log(`❌ SMTP error (${SMTP_HOST}):`, error.message);
+      if (SMTP_HOST === "smtp.gmail.com") {
+        console.log("Fix: 1) Remove spaces from App Password 2) Enable 2FA on Google — or set SMTP_* for another provider");
+      }
     } else {
-      console.log("✅ Gmail SMTP Connected");
+      console.log(`✅ SMTP connected (${SMTP_HOST})`);
     }
   });
 }
@@ -53,8 +63,8 @@ export function invalidateMailerCache(tenantSlug) {
 export async function getMailerForTenant(tenantSlug) {
   const fallback = {
     transporter: defaultTransporter,
-    fromEmail: process.env.EMAIL_USER,
-    fromAddress: `"AtriumDesk" <${process.env.EMAIL_USER}>`,
+    fromEmail: DEFAULT_FROM_EMAIL,
+    fromAddress: `"AtriumDesk" <${DEFAULT_FROM_EMAIL}>`,
   };
   if (!tenantSlug) return fallback;
 

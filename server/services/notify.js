@@ -4,13 +4,50 @@ import { getMailerForTenant } from "./mailer.js";
 const DEFAULT_BRAND_NAME = "AtriumDesk";
 const DEFAULT_BRAND_COLOR = "#1E2E6E";
 
+// Anything a person typed or a scraped page supplied (issue titles and
+// replies, names, listing titles) is HTML-escaped before it goes into an
+// email — otherwise a registration name or an issue title becomes markup
+// in mail sent from the university's own address.
+const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+export const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+
+class TrustedHtml {
+  constructor(html) {
+    this.html = html;
+  }
+  toString() {
+    return this.html;
+  }
+}
+
+// Multi-line user text: escaped, line breaks kept.
+export const multilineHtml = (value) => new TrustedHtml(escapeHtml(value).replace(/\r?\n/g, "<br/>"));
+
+// Tagged template for email bodies: the literal parts are trusted markup,
+// every ${value} is escaped unless it is already TrustedHtml (safeHtml or
+// multilineHtml output). A plain string body is treated as text.
+export const safeHtml = (strings, ...values) =>
+  new TrustedHtml(
+    strings.reduce(
+      (out, part, i) =>
+        out + part + (i < values.length ? (values[i] instanceof TrustedHtml ? values[i].html : escapeHtml(values[i])) : ""),
+      ""
+    )
+  );
+
+const bodyHtml = (body) => (body instanceof TrustedHtml ? body.html : escapeHtml(body));
+
 // `branding` is the caller's tenant branding (req.tenant?.branding) — falls
 // back to the original hardcoded AtriumDesk/MAJU look when absent, so this
 // stays backward-compatible for any call site that hasn't been threaded
 // through yet.
 const emailTemplate = ({ heading, body, link, branding, unsubscribeLink }) => {
-  const brandName = branding?.universityName || branding?.universityShort || DEFAULT_BRAND_NAME;
-  const brandColor = branding?.primaryColor || DEFAULT_BRAND_COLOR;
+  const brandName = escapeHtml(branding?.universityName || branding?.universityShort || DEFAULT_BRAND_NAME);
+  const brandColor = /^#[0-9a-f]{3,8}$/i.test(branding?.primaryColor || "") ? branding.primaryColor : DEFAULT_BRAND_COLOR;
+  heading = escapeHtml(heading);
+  body = bodyHtml(body);
+  link = link ? escapeHtml(link) : link;
+  unsubscribeLink = unsubscribeLink ? escapeHtml(unsubscribeLink) : unsubscribeLink;
   return `
   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
     <div style="background: ${brandColor}; color: white; padding: 15px; border-radius: 10px 10px 0 0; text-align: center;">
@@ -24,7 +61,7 @@ const emailTemplate = ({ heading, body, link, branding, unsubscribeLink }) => {
           ? `<p style="margin-top: 24px;"><a href="${link}" style="background: ${brandColor}; color: white; padding: 10px 18px; text-decoration: none; border-radius: 6px;">View in ${brandName}</a></p>`
           : ""
       }
-      <p style="color: #666; font-size: 12px; margin-top: 24px;">${brandName}${branding?.supportEmail ? ` | ${branding.supportEmail}` : ""}</p>
+      <p style="color: #666; font-size: 12px; margin-top: 24px;">${brandName}${branding?.supportEmail ? ` | ${escapeHtml(branding.supportEmail)}` : ""}</p>
       ${
         unsubscribeLink
           ? `<p style="color: #999; font-size: 11px; margin-top: 8px;"><a href="${unsubscribeLink}" style="color: #999;">Unsubscribe from these emails</a> · change frequency in your profile settings</p>`
@@ -90,13 +127,11 @@ export const sendDigestEmail = async (NotificationModel, user, { items, branding
   if (!items?.length) return;
 
   const clientBase = process.env.CLIENT_URL || "";
-  const rows = items
-    .map((item) => {
-      const path = item.listingType === "job" ? "jobs" : "scholarships";
-      const link = clientBase ? `${clientBase}/${path}/${item._id}` : `/${path}/${item._id}`;
-      return `<li><a href="${link}">${item.title}</a> — ${item.organization}</li>`;
-    })
-    .join("");
+  const rows = items.map((item) => {
+    const path = item.listingType === "job" ? "jobs" : "scholarships";
+    const link = clientBase ? `${clientBase}/${path}/${item._id}` : `/${path}/${item._id}`;
+    return safeHtml`<li><a href="${link}">${item.title}</a> — ${item.organization}</li>`;
+  });
   const message = `${items.length} new match${items.length === 1 ? "" : "es"} since your last digest`;
 
   try {
@@ -120,7 +155,7 @@ export const sendDigestEmail = async (NotificationModel, user, { items, branding
       subject: message,
       html: emailTemplate({
         heading: message,
-        body: `<ul style="padding-left: 18px;">${rows}</ul>`,
+        body: new TrustedHtml(`<ul style="padding-left: 18px;">${rows.map((r) => r.html).join("")}</ul>`),
         link: clientBase ? `${clientBase}/scholarships` : null,
         branding,
         unsubscribeLink: buildUnsubscribeLink(user._id, tenantSlug),

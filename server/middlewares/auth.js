@@ -11,6 +11,12 @@ export const protect = async (req, res, next) => {
     const userId = decoded.id;
     const tenantSlug = decoded.tenantSlug;
 
+    // Single-purpose tokens signed with the same secret (email verification
+    // tickets, unsubscribe links) are never sessions.
+    if (decoded.purpose) {
+      return res.status(401).json({ success: false, message: "Not authorized token failed" });
+    }
+
     if (!tenantSlug) {
       return res.status(401).json({
         success: false,
@@ -43,6 +49,16 @@ export const protect = async (req, res, next) => {
         success: false,
         message: "Your account has been blocked. Please contact the administrator.",
         blocked: true,
+      });
+    }
+
+    // A password change or reset ends every session started before it.
+    // (iat is in whole seconds; a token issued in the same second as the
+    // change — the one changePassword hands back — stays valid.)
+    if (user.passwordChangedAt && decoded.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)) {
+      return res.status(401).json({
+        success: false,
+        message: "Not authorized, your password was changed — please sign in again",
       });
     }
 

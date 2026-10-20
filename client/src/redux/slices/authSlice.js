@@ -1,6 +1,46 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "../../utils/axios";
-import { validateMajuEmail } from "../../utils/validation";
+import { validateEmail } from "../../utils/validation";
+
+// The server's proof that this browser started the sign-up (or just proved
+// the password on login) — verify-otp needs it alongside the emailed code.
+// Kept per tab; storage can be unavailable, so every access is guarded.
+const VERIFY_TICKET_KEY = "verifyTicket";
+export const saveVerificationTicket = (email, ticket) => {
+  try {
+    if (ticket) sessionStorage.setItem(VERIFY_TICKET_KEY, JSON.stringify({ email, ticket }));
+  } catch { /* storage unavailable */ }
+};
+const readVerificationTicket = (email) => {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(VERIFY_TICKET_KEY) || "null");
+    return saved && saved.email === email ? saved.ticket : undefined;
+  } catch {
+    return undefined;
+  }
+};
+const clearVerificationTicket = () => {
+  try {
+    sessionStorage.removeItem(VERIFY_TICKET_KEY);
+  } catch { /* storage unavailable */ }
+};
+
+// Impersonation survives a page refresh (its token is in localStorage), so
+// its banner must too.
+const IMPERSONATION_KEY = "impersonation";
+const readImpersonation = () => {
+  try {
+    return JSON.parse(sessionStorage.getItem(IMPERSONATION_KEY) || "null");
+  } catch {
+    return null;
+  }
+};
+const writeImpersonation = (value) => {
+  try {
+    if (value) sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify(value));
+    else sessionStorage.removeItem(IMPERSONATION_KEY);
+  } catch { /* storage unavailable */ }
+};
 import { resetChat } from "./chatSlice";
 import { clearGuestSession } from "./guestSlice";
 import { setTenantBranding, clearTenantBranding } from "./tenantSlice";
@@ -9,18 +49,20 @@ export const registerUser = createAsyncThunk(
   "auth/register",
   async ({ name, email, password }) => {
     try {
-      const nameRegex = /^[A-Za-z\s]+$/;
+      // Letters in any script, spaces, apostrophes, hyphens and dots
+      // ("Ayesha Al-Khan", "O'Brien", "M. Ali").
+      const nameRegex = /^[\p{L}\s.'-]+$/u;
       if (!nameRegex.test(name)) {
         return {
           success: false,
-          message: "Name should contain only alphabets and spaces",
+          message: "Name should contain only letters, spaces, apostrophes, hyphens or dots",
         };
       }
       if (!name || name.length < 2) {
         return { success: false, message: "Name must be at least 2 characters" };
       }
 
-      const emailValidation = validateMajuEmail(email);
+      const emailValidation = validateEmail(email);
       if (!emailValidation.isValid) {
         return { success: false, message: emailValidation.error };
       }
@@ -39,6 +81,7 @@ export const registerUser = createAsyncThunk(
       });
 
       if (data.success) {
+        saveVerificationTicket(emailValidation.email, data.verificationTicket);
         return { success: true, email: emailValidation.email };
       }
       return { success: false, message: data.message };
@@ -49,7 +92,7 @@ export const registerUser = createAsyncThunk(
       } else if (error.response?.status === 409) {
         message = "User already exists";
       } else if (error.response?.status === 429) {
-        message = "Too many attempts";
+        message = error.response?.data?.message || "Too many attempts";
       } else if (error.code === "ERR_NETWORK") {
         message = "Network error";
       } else if (error.response?.data?.message) {
@@ -68,7 +111,7 @@ export const verifyOtp = createAsyncThunk(
         return { success: false, message: "Email and OTP are required" };
       }
 
-      const emailValidation = validateMajuEmail(email);
+      const emailValidation = validateEmail(email);
       if (!emailValidation.isValid) {
         return { success: false, message: "Invalid email format" };
       }
@@ -86,11 +129,13 @@ export const verifyOtp = createAsyncThunk(
         email: emailValidation.email,
         otp: cleanOtp,
         guestSessionId,
+        verificationTicket: readVerificationTicket(emailValidation.email),
       });
 
       if (data.success) {
         localStorage.setItem("token", data.token);
         if (guestSessionId) localStorage.removeItem("guestSessionId");
+        clearVerificationTicket();
         return { success: true, token: data.token, user: data.user };
       }
       return {
@@ -101,16 +146,20 @@ export const verifyOtp = createAsyncThunk(
       };
     } catch (error) {
       let message = "Verification failed";
+      const body = error.response?.data || {};
       if (error.response?.status === 400) {
-        message = error.response?.data?.message || "Invalid OTP";
+        message = body.message || "Invalid OTP";
+      } else if (error.response?.status === 403 && body.restartRegistration) {
+        clearVerificationTicket();
+        return { success: false, message: body.message, restartRegistration: true };
       } else if (error.response?.status === 404) {
         message = "User not found";
       } else if (error.response?.status === 429) {
-        message = "Too many attempts";
+        message = body.message || "Too many attempts";
       } else if (error.code === "ERR_NETWORK") {
         message = "Network error";
       }
-      return { success: false, message };
+      return { success: false, message, attemptsRemaining: body.attemptsRemaining, requiresNewOtp: body.requiresNewOtp };
     }
   }
 );
@@ -121,7 +170,7 @@ export const resendOtp = createAsyncThunk(
     try {
       if (!email) return { success: false, message: "Email is required" };
 
-      const emailValidation = validateMajuEmail(email);
+      const emailValidation = validateEmail(email);
       if (!emailValidation.isValid) {
         return { success: false, message: "Invalid email format" };
       }
@@ -138,9 +187,9 @@ export const resendOtp = createAsyncThunk(
       };
     } catch (error) {
       let message = "Failed to resend OTP";
-      if (error.response?.status === 400) message = "Invalid email";
+      if (error.response?.status === 400) message = error.response?.data?.message || "Invalid email";
       else if (error.response?.status === 404) message = "User not found";
-      else if (error.response?.status === 429) message = "Too many attempts";
+      else if (error.response?.status === 429) message = error.response?.data?.message || "Too many attempts";
       else if (error.code === "ERR_NETWORK") message = "Network error";
       return { success: false, message };
     }
@@ -155,11 +204,11 @@ export const loginUser = createAsyncThunk(
         return { success: false, message: "Email and password required" };
       }
 
-      const normalized = email.trim().toLowerCase();
-      const genericEmailRegex = /^[\w.-]+@([\w-]+\.)+[\w-]{2,4}$/;
-      if (!genericEmailRegex.test(normalized)) {
-        return { success: false, message: "Invalid email format" };
+      const emailValidation = validateEmail(email);
+      if (!emailValidation.isValid) {
+        return { success: false, message: emailValidation.error };
       }
+      const normalized = emailValidation.email;
 
       const { data } = await axios.post("/api/user/login", {
         email: normalized,
@@ -181,17 +230,24 @@ export const loginUser = createAsyncThunk(
       };
     } catch (error) {
       let message = "Login failed";
+      const body = error.response?.data || {};
       if (error.response?.status === 400) message = "Invalid input";
       else if (error.response?.status === 401)
         message = "Invalid email or password";
       else if (error.response?.status === 403) {
-        return {
-          success: false,
-          message: "Please verify your email first",
-          needsVerification: true,
-          email,
-        };
-      } else if (error.response?.status === 429) message = "Account locked";
+        // Unverified (finish sign-up), blocked, or a suspended university —
+        // the server says which.
+        if (body.needsVerification) {
+          saveVerificationTicket(body.email, body.verificationTicket);
+          return {
+            success: false,
+            message: body.message || "Please verify your email first",
+            needsVerification: true,
+            email: body.email,
+          };
+        }
+        return { success: false, message: body.message || "Access denied" };
+      } else if (error.response?.status === 429) message = body.message || "Account locked";
       else if (error.code === "ERR_NETWORK") message = "Network error";
       return { success: false, message };
     }
@@ -204,7 +260,7 @@ export const forgotPassword = createAsyncThunk(
     try {
       if (!email) return { success: false, message: "Email is required" };
 
-      const emailValidation = validateMajuEmail(email);
+      const emailValidation = validateEmail(email);
       if (!emailValidation.isValid) {
         return { success: false, message: "Invalid email format" };
       }
@@ -219,8 +275,8 @@ export const forgotPassword = createAsyncThunk(
       return { success: false, message: data.message };
     } catch (error) {
       let message = "Failed to send reset OTP";
-      if (error.response?.status === 400) message = "Invalid email";
-      else if (error.response?.status === 429) message = "Too many attempts";
+      if (error.response?.status === 400) message = error.response?.data?.message || "Invalid email";
+      else if (error.response?.status === 429) message = error.response?.data?.message || "Too many attempts";
       else if (error.code === "ERR_NETWORK") message = "Network error";
       return { success: false, message };
     }
@@ -235,7 +291,7 @@ export const resetPassword = createAsyncThunk(
         return { success: false, message: "All fields are required" };
       }
 
-      const emailValidation = validateMajuEmail(email);
+      const emailValidation = validateEmail(email);
       if (!emailValidation.isValid) {
         return { success: false, message: "Invalid email format" };
       }
@@ -266,9 +322,9 @@ export const resetPassword = createAsyncThunk(
       };
     } catch (error) {
       let message = "Failed to reset password";
-      if (error.response?.status === 400) message = "Invalid input";
+      if (error.response?.status === 400) message = error.response?.data?.message || "Invalid input";
       else if (error.response?.status === 404) message = "User not found";
-      else if (error.response?.status === 429) message = "Too many attempts";
+      else if (error.response?.status === 429) message = error.response?.data?.message || "Too many attempts";
       else if (error.code === "ERR_NETWORK") message = "Network error";
       return { success: false, message };
     }
@@ -304,6 +360,7 @@ export const logoutUser = createAsyncThunk(
   "auth/logout",
   async (_, { dispatch }) => {
     localStorage.removeItem("token");
+    writeImpersonation(null);
     dispatch(resetChat());
     dispatch(clearGuestSession());
     dispatch(clearTenantBranding());
@@ -413,8 +470,8 @@ const initialState = {
   // banner (components/ImpersonationBanner.jsx) reads this so an
   // impersonated session is never visually indistinguishable from a real
   // tenant Administrator login.
-  impersonating: false,
-  impersonatedTenantName: null,
+  impersonating: Boolean(localStorage.getItem("token") && readImpersonation()),
+  impersonatedTenantName: (localStorage.getItem("token") && readImpersonation()?.tenantName) || null,
 };
 
 const authSlice = createSlice({
@@ -432,9 +489,11 @@ const authSlice = createSlice({
       state.loadingUser = false;
       state.impersonating = true;
       state.impersonatedTenantName = tenantName;
+      writeImpersonation({ tenantName });
     },
     endImpersonation(state) {
       localStorage.removeItem("token");
+      writeImpersonation(null);
       state.token = null;
       state.user = null;
       state.impersonating = false;
@@ -472,6 +531,16 @@ const authSlice = createSlice({
       .addCase(logoutUser.fulfilled, (state) => {
         state.token = null;
         state.user = null;
+        state.impersonating = false;
+        state.impersonatedTenantName = null;
+      })
+      // changePassword ends every other session; the server hands this one
+      // a fresh token.
+      .addCase(changePassword.fulfilled, (state, action) => {
+        if (action.payload?.success && action.payload.token) {
+          localStorage.setItem("token", action.payload.token);
+          state.token = action.payload.token;
+        }
       })
       .addCase(updateProfile.fulfilled, (state, action) => {
         if (action.payload.success) {

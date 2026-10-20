@@ -46,6 +46,9 @@ const Login = () => {
           ? "/admin/dashboard"
           : "/chat";
       navigate(dest, { replace: true });
+    } else if (result.needsVerification) {
+      toast("Your email isn't verified yet — enter the code we send you.");
+      navigate("/register", { state: { verifyEmail: result.email } });
     } else {
       toast.error(result.message || "Login failed");
     }

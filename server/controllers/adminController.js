@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { parse } from "csv-parse/sync";
-import { notify, sendDirectEmail } from "../services/notify.js";
+import { notify, sendDirectEmail, safeHtml } from "../services/notify.js";
 import { escapeRegex } from "../services/escapeRegex.js";
 import { validateStudentEmailForTenant } from "./userController.js";
 
@@ -13,17 +13,24 @@ const sanitizeNamePart = (s) =>
     .normalize("NFKD")
     .replace(/[^a-z0-9]/g, "");
 
-// `staffEmailDomainPattern` comes from the current tenant (req.tenant),
-// replacing the previously hardcoded `maju.${deptCode}.edu` literal.
-const buildStaffEmail = async (UserModel, name, deptCode, staffEmailDomainPattern) => {
+// The domain comes from the current tenant: its staff pattern (e.g.
+// "uni.{dept}.edu") when set, else its first email domain. Login finds a
+// user's university by email domain, so a domain the tenant doesn't own
+// would leave the account unable to sign in.
+export const staffEmailDomainFor = (tenant, deptCode) => {
+  const pattern = (tenant?.staffEmailDomainPattern || "").trim();
+  if (pattern) return pattern.replace("{dept}", (deptCode || "general").toLowerCase());
+  return (tenant?.emailDomains || [])[0] || null;
+};
+
+const buildStaffEmail = async (UserModel, name, deptCode, tenant) => {
   const parts = (name || "").trim().split(/\s+/).filter(Boolean);
   let local;
   if (parts.length === 0) local = "staff";
   else if (parts.length === 1) local = sanitizeNamePart(parts[0]);
   else local = sanitizeNamePart(parts[0]) + sanitizeNamePart(parts[parts.length - 1]);
   if (!local) local = "staff";
-  const pattern = staffEmailDomainPattern || "maju.{dept}.edu";
-  const domain = pattern.replace("{dept}", (deptCode || "general").toLowerCase());
+  const domain = staffEmailDomainFor(tenant, deptCode);
   let candidate = `${local}@${domain}`;
   let suffix = 1;
   while (await UserModel.findOne({ email: candidate })) {
@@ -286,6 +293,12 @@ export const createStaffUser = async (req, res) => {
   try {
     const dept = await req.models.Department.findById(departmentId);
     if (!dept) return res.status(400).json({ success: false, message: "Invalid department" });
+    if (!staffEmailDomainFor(req.tenant, dept.code)) {
+      return res.status(400).json({
+        success: false,
+        message: "Set a staff email pattern or an email domain in Settings before creating staff accounts.",
+      });
+    }
 
     const password = generatePassword();
     const salt = await bcrypt.genSalt(10);
@@ -299,7 +312,7 @@ export const createStaffUser = async (req, res) => {
     // instead of surfacing a generic 500 for what's just a naming race.
     let email, user;
     for (let attempt = 0; attempt < 3; attempt++) {
-      email = await buildStaffEmail(req.models.User, name, dept.code, req.tenant?.staffEmailDomainPattern);
+      email = await buildStaffEmail(req.models.User, name, dept.code, req.tenant);
       try {
         user = await req.models.User.create({
           name,
@@ -324,7 +337,7 @@ export const createStaffUser = async (req, res) => {
       message: "Your AtriumDesk staff account is ready",
       emailSubject: "Welcome to AtriumDesk — Your Staff Credentials",
       emailHeading: `Welcome, ${name}`,
-      emailBody: `An administrator created a staff account for you on AtriumDesk (${dept.name}).<br/><br/><strong>Email:</strong> ${email}<br/><strong>Password:</strong> ${password}<br/><br/>Please log in and change your password as soon as possible.`,
+      emailBody: safeHtml`An administrator created a staff account for you on AtriumDesk (${dept.name}).<br/><br/><strong>Email:</strong> ${email}<br/><strong>Password:</strong> ${password}<br/><br/>Please log in and change your password as soon as possible.`,
       link: "/login",
       branding: req.tenant?.branding,
       tenantSlug: req.tenant?.slug,
@@ -389,7 +402,7 @@ export const updateStaffUser = async (req, res) => {
         link: "/profile",
         emailSubject: "Your AtriumDesk sign-in email was changed",
         emailHeading: "Your sign-in email was updated",
-        emailBody: `${adminName} updated your AtriumDesk sign-in email.<br/><br/>
+        emailBody: safeHtml`${adminName} updated your AtriumDesk sign-in email.<br/><br/>
           <strong>Previous:</strong> ${previousEmail}<br/>
           <strong>New (use this to log in):</strong> ${user.email}<br/><br/>
           Your password is unchanged. If you didn't expect this change, contact your administrator immediately.`,
@@ -401,7 +414,7 @@ export const updateStaffUser = async (req, res) => {
         to: previousEmail,
         subject: "Security alert: your AtriumDesk sign-in email was changed",
         heading: "Security alert — sign-in email changed",
-        body: `${adminName} changed the sign-in email on your AtriumDesk account.<br/><br/>
+        body: safeHtml`${adminName} changed the sign-in email on your AtriumDesk account.<br/><br/>
           <strong>Old email (this one):</strong> ${previousEmail}<br/>
           <strong>New email (now used to sign in):</strong> ${user.email}<br/><br/>
           You will no longer be able to sign in with this address. If you did NOT expect or authorize this change, contact your administrator immediately — your account may be compromised.`,

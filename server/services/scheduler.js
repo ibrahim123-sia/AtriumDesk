@@ -20,7 +20,7 @@ import fetch from "node-fetch";
 import { getTenantConnection } from "../config/tenantDb.js";
 import { getTenantModels } from "../models/registry.js";
 import { getTenantModel as getPlatformTenantModel } from "../models/platform/Tenant.js";
-import { notify, sendDigestEmail } from "./notify.js";
+import { notify, sendDigestEmail, safeHtml } from "./notify.js";
 import { evaluateHardRules, MatchState } from "./matching.js";
 import { buildStudentMatchProfile } from "./studentMatchProfile.js";
 import { findDueSources } from "./dueSources.js";
@@ -108,7 +108,7 @@ export async function runSlaEscalationCheck() {
         link: `/staff/issues/${issue._id}`,
         emailSubject: `[${dept.code}] SLA breach — issue escalated`,
         emailHeading: "An issue in your department has breached its SLA",
-        emailBody: `<strong>${issue.title}</strong><br/><br/>Created: ${issue.createdAt.toLocaleString()}<br/>Department: ${dept.code}<br/>No staff reply yet.`,
+        emailBody: safeHtml`<strong>${issue.title}</strong><br/><br/>Created: ${issue.createdAt.toLocaleString()}<br/>Department: ${dept.code}<br/>No staff reply yet.`,
         branding: tenant.branding,
         tenantSlug: tenant.slug,
       };

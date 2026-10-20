@@ -152,11 +152,30 @@ export const createTenant = async (req, res) => {
     // typo'd or mismatched adminEmail silently creates an Administrator who
     // can never log in, since their own email doesn't resolve to the
     // tenant that was just provisioned for them.
-    const adminDomain = String(adminEmail).split("@")[1]?.toLowerCase().trim();
-    if (domains.length > 0 && !domains.includes(adminDomain)) {
+    const normalizedAdminEmail = String(adminEmail).toLowerCase().trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalizedAdminEmail)) {
+      return res.status(400).json({ success: false, message: "adminEmail is not a valid email address" });
+    }
+    // Sign-in finds a user's university by email domain, so a tenant with no
+    // domain could never be signed into.
+    if (domains.length === 0) {
+      return res.status(400).json({ success: false, message: "Add at least one email domain for this university" });
+    }
+    const adminDomain = normalizedAdminEmail.split("@")[1];
+    if (!domains.includes(adminDomain)) {
       return res.status(400).json({
         success: false,
         message: `adminEmail's domain ("${adminDomain}") must be one of the tenant's own emailDomains (${domains.join(", ")}), or the Administrator will never be able to log in.`,
+      });
+    }
+    // Two tenants claiming one domain would send its users to whichever
+    // tenant the lookup happened to return (updateTenant checks this too).
+    const claimed = await Tenant.findOne({ emailDomains: { $in: domains } }).select("slug emailDomains");
+    if (claimed) {
+      const taken = domains.filter((d) => claimed.emailDomains.includes(d));
+      return res.status(409).json({
+        success: false,
+        message: `Email domain ${taken.join(", ")} already belongs to tenant "${claimed.slug}"`,
       });
     }
 
@@ -186,13 +205,24 @@ export const createTenant = async (req, res) => {
     const connection = getTenantConnection(dbName);
     const models = getTenantModels(connection);
     const hashed = await bcrypt.hash(adminPassword, await bcrypt.genSalt(10));
-    const admin = await models.User.create({
-      name: adminName,
-      email: String(adminEmail).toLowerCase().trim(),
-      password: hashed,
-      role: "admin",
-      isVerified: true,
-    });
+    let admin;
+    try {
+      admin = await models.User.create({
+        name: adminName,
+        email: normalizedAdminEmail,
+        password: hashed,
+        role: "admin",
+        isVerified: true,
+      });
+    } catch (adminError) {
+      // Don't leave a half-made tenant stuck in "provisioning" with its slug
+      // taken — remove the row so the wizard can simply be run again.
+      await Tenant.deleteOne({ _id: tenant._id }).catch(() => {});
+      return res.status(400).json({
+        success: false,
+        message: `Could not create the Administrator: ${adminError.message}`,
+      });
+    }
 
     tenant.provisionedAdministrator = admin._id;
     tenant.status = "active";

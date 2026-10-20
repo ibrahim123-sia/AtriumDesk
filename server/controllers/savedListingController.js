@@ -11,11 +11,18 @@ const FEATURE_FOR_TYPE = { scholarship: "scholarships", job: "jobs", event: "eve
 const isTypeEnabled = (tenant, listingType) =>
   tenant?.enabledFeatures?.[FEATURE_FOR_TYPE[listingType]] !== false;
 
+// Expired and delisted items stay in a student's saved list with a badge
+// (Rev 5 §6.5); pending and rejected listings were never published.
+const VISIBLE_STATUSES = ["approved", "expired", "delisted"];
+const STUDENT_HIDDEN_FIELDS = "-rejectionReason -contentHash";
+
 export const listSaved = async (req, res) => {
   try {
     const saved = await req.models.SavedListing.find({ userId: req.user._id }).sort({ createdAt: -1 });
     const listingIds = saved.map((s) => s.listingId);
-    const listings = await req.models.Listing.find({ _id: { $in: listingIds } });
+    const listings = await req.models.Listing.find({ _id: { $in: listingIds }, status: { $in: VISIBLE_STATUSES } }).select(
+      STUDENT_HIDDEN_FIELDS
+    );
     const byId = new Map(listings.map((l) => [l._id.toString(), l]));
     const items = saved
       .map((s) => ({ savedId: s._id, listing: byId.get(s.listingId.toString()) || null, createdAt: s.createdAt }))
@@ -30,7 +37,7 @@ export const listSaved = async (req, res) => {
 export const saveListing = async (req, res) => {
   const { listingId } = req.params;
   try {
-    const listing = await req.models.Listing.findById(listingId);
+    const listing = await req.models.Listing.findOne({ _id: listingId, status: "approved" });
     if (!listing) return res.status(404).json({ success: false, message: "Listing not found" });
     if (!isTypeEnabled(req.tenant, listing.listingType)) {
       return res.status(403).json({ success: false, message: "This module is not enabled for your university." });

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
@@ -11,6 +12,7 @@ import { getMailerForTenant, verifyDefaultTransporter } from "../services/mailer
 import { MAX_MATCHED_INPUT_LENGTH } from "../services/regexSafety.js";
 import { cgpaToGerman, cgpaToPercentage } from "../services/cgpaConversion.js";
 import { deleteUpload } from "../services/fileStore.js";
+import { escapeHtml } from "../services/notify.js";
 
 verifyDefaultTransporter();
 
@@ -142,21 +144,43 @@ const hashPassword = async (password) => {
   return await bcrypt.hash(password, salt);
 };
 
-// Keys by IP + the email's domain, not IP alone — a shared campus NAT
-// serving two different tenants would otherwise let one university's users
-// exhaust the shared IP's quota and lock out the other university's users.
+// OTP send limits. Keyed by IP + the email's domain, not IP alone — a shared
+// campus NAT serving two different tenants would otherwise let one
+// university's users exhaust the shared IP's quota and lock out the other's.
+// Successful sends count too (each one is an email from the tenant's mail
+// account): the per-address limit stops one inbox being flooded, the
+// per-domain one stops a spray across many addresses, and is high enough
+// for a whole campus registering through one NAT.
 const tenantAwareKey = (req) => {
   const email = String(req.body?.email || "").toLowerCase().trim();
   const domain = email.includes("@") ? email.split("@")[1] : "no-domain";
   return `${ipKeyGenerator(req.ip || "")}:${domain}`;
 };
 
-// OTP rate limiter
+const perAddressKey = (req) =>
+  `${ipKeyGenerator(req.ip || "")}:${String(req.body?.email || "").toLowerCase().trim()}`;
+
 export const otpLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  message: { success: false, message: "Too many code requests from this network, please try again later" },
+  keyGenerator: tenantAwareKey,
+});
+
+export const otpPerAddressLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
   max: 5,
-  message: "Too many OTP requests, please try again later",
-  skipSuccessfulRequests: true,
+  message: { success: false, message: "Too many code requests for this email, please try again in 15 minutes" },
+  keyGenerator: perAddressKey,
+});
+
+// Checking a code (verify-otp, reset-password): each account also locks its
+// current code after MAX_CODE_ATTEMPTS wrong tries; this caps guessing
+// across accounts from one network.
+export const codeCheckLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { success: false, message: "Too many attempts, please try again later" },
   keyGenerator: tenantAwareKey,
 });
 
@@ -172,9 +196,63 @@ export const loginLimiter = rateLimit({
   keyGenerator: tenantAwareKey,
 });
 
+const OTP_TTL_MS = 5 * 60 * 1000;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const MAX_CODE_ATTEMPTS = 5;
+
 function generateOtp() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 1000000).toString();
 }
+
+// Seconds until another code may be sent — derived from the current code's
+// expiry, since every code lives exactly OTP_TTL_MS.
+const resendWaitSeconds = (expires) => {
+  if (!expires) return 0;
+  const sentAt = new Date(expires).getTime() - OTP_TTL_MS;
+  const waitMs = sentAt + OTP_RESEND_COOLDOWN_MS - Date.now();
+  return waitMs > 0 ? Math.ceil(waitMs / 1000) : 0;
+};
+
+const codesMatch = (provided, expected) =>
+  typeof expected === "string" &&
+  provided.length === expected.length &&
+  crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+
+// The code goes to the inbox; this ticket goes to whoever started the
+// sign-up (registration, or a login on an unverified account — both prove
+// the password). Verifying needs both, so someone who re-registers another
+// person's pending address with their own password can never finish it:
+// they get a ticket but no code, and the owner's code only works with the
+// owner's ticket. Bound to the current password, so re-registering
+// invalidates earlier tickets.
+const VERIFY_TICKET_PURPOSE = "verify-email";
+const passwordTag = (passwordHash) =>
+  crypto.createHash("sha256").update(String(passwordHash || "")).digest("hex").slice(0, 16);
+
+const issueVerificationTicket = (user, tenantSlug) =>
+  jwt.sign(
+    { purpose: VERIFY_TICKET_PURPOSE, email: user.email, tenantSlug, pw: passwordTag(user.password) },
+    process.env.JWT_SECRET,
+    { expiresIn: "2h" }
+  );
+
+const isValidVerificationTicket = (ticket, user) => {
+  try {
+    const payload = jwt.verify(String(ticket || ""), process.env.JWT_SECRET);
+    return payload.purpose === VERIFY_TICKET_PURPOSE && payload.email === user.email && payload.pw === passwordTag(user.password);
+  } catch {
+    return false;
+  }
+};
+
+// Shape-only check for flows that act on an existing account (verify,
+// resend, forgot/reset password). The tenant's student-email pattern only
+// matters when an account is created — applying it here locked staff and
+// administrators, whose addresses never match it, out of password reset.
+const normalizeAccountEmail = (email) => {
+  const normalized = String(email || "").trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) ? normalized : null;
+};
 
 const generateToken = (id, tenantSlug) => {
   const userId = id.toString ? id.toString() : id;
@@ -189,7 +267,7 @@ const generateToken = (id, tenantSlug) => {
 const sendOtpEmail = async (toEmail, name, otp, subject = 'OTP Verification', tenant = null) => {
   try {
     const { transporter, fromAddress } = await getMailerForTenant(tenant?.slug);
-    const brandName = tenant?.branding?.universityName || tenant?.branding?.universityShort || "AtriumDesk";
+    const brandName = escapeHtml(tenant?.branding?.universityName || tenant?.branding?.universityShort || "AtriumDesk");
     const mailOptions = {
       from: fromAddress,
       to: toEmail,
@@ -200,7 +278,7 @@ const sendOtpEmail = async (toEmail, name, otp, subject = 'OTP Verification', te
             <h1 style="margin: 0;">${brandName} Verification</h1>
           </div>
           <div style="padding: 25px;">
-            <h2>Hello ${name},</h2>
+            <h2>Hello ${escapeHtml(name)},</h2>
             <p>Your verification code is:</p>
             <div style="background: #f8f9fa; padding: 25px; text-align: center; margin: 25px 0; border-radius: 8px; border-left: 4px solid #4a6fa5;">
               <div style="font-size: 36px; font-weight: bold; letter-spacing: 10px; color: #2c3e50;">${otp}</div>
@@ -278,7 +356,7 @@ export const registerUser = async (req, res) => {
 
   try {
     const models = getModelsForTenant(tenant);
-    const userExists = await models.User.findOne({ email: emailValidation.email });
+    const userExists = await models.User.findOne({ email: emailValidation.email }).select("+otpExpires");
 
     // Check if user is already verified
     if (userExists?.isVerified) {
@@ -289,22 +367,21 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    // Check if user exists but not verified
-    if (userExists && !userExists.isVerified) {
-      // Check if OTP was recently sent (cooldown period)
-      if (userExists.otpExpires && userExists.otpExpires > Date.now() - 60000) {
-        return res.status(429).json({
-          success: false,
-          message: "OTP was recently sent. Please wait 1 minute before requesting a new one",
-          retryAfter: Math.ceil((userExists.otpExpires - Date.now() + 60000) / 1000)
-        });
-      }
+    // Existing but unverified: a code was sent less than a minute ago.
+    const waitSeconds = userExists ? resendWaitSeconds(userExists.otpExpires) : 0;
+    if (waitSeconds > 0) {
+      return res.status(429).json({
+        success: false,
+        message: `A code was just sent. Please wait ${waitSeconds} seconds before requesting a new one`,
+        retryAfter: waitSeconds,
+      });
     }
 
     const otp = generateOtp();
-    const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
+    const otpExpires = new Date(Date.now() + OTP_TTL_MS);
 
     const hashedPassword = await hashPassword(password);
+    let createdUser = null;
 
     if (userExists) {
       // Update existing unverified user
@@ -312,6 +389,7 @@ export const registerUser = async (req, res) => {
       userExists.password = hashedPassword;
       userExists.otp = otp;
       userExists.otpExpires = otpExpires;
+      userExists.otpAttempts = 0;
       if (emailValidation.programName) {
         userExists.profile.core.degreeProgram = emailValidation.programName;
         userExists.profile.core.rollNumber = emailValidation.rollNumber;
@@ -326,7 +404,7 @@ export const registerUser = async (req, res) => {
       await userExists.save();
     } else {
       // Create new user
-      await models.User.create({
+      createdUser = await models.User.create({
         name,
         email: emailValidation.email,
         password: hashedPassword,
@@ -367,6 +445,7 @@ export const registerUser = async (req, res) => {
       success: true,
       message: "OTP sent! Check your inbox AND spam folder.",
       email: emailValidation.email,
+      verificationTicket: issueVerificationTicket(userExists || createdUser, tenant.slug),
       program: emailValidation.programName,
       session: emailValidation.sessionType ? emailValidation.sessionType.toUpperCase() : undefined,
       year: emailValidation.year ? `20${emailValidation.year}` : undefined,
@@ -394,7 +473,7 @@ export const registerUser = async (req, res) => {
 };
 
 export const verifyOtp = async (req, res) => {
-  const { email, otp } = req.body;
+  const { email, otp, verificationTicket } = req.body;
 
   if (!email || !otp) {
     return res.status(400).json({
@@ -403,20 +482,16 @@ export const verifyOtp = async (req, res) => {
     });
   }
 
-  const tenant = await resolveTenantForEmail(email);
+  const normalizedEmail = normalizeAccountEmail(email);
+  if (!normalizedEmail) {
+    return res.status(400).json({ success: false, message: "Invalid email format" });
+  }
+
+  const tenant = await resolveTenantForEmail(normalizedEmail);
   if (!tenant) {
     return res.status(400).json({
       success: false,
       message: "This email domain is not registered with any university on this platform",
-    });
-  }
-
-  // Validate MAJU email format
-  const emailValidation = validateStudentEmailForTenant(tenant, email);
-  if (!emailValidation.isValid) {
-    return res.status(400).json({
-      success: false,
-      message: emailValidation.error
     });
   }
 
@@ -431,7 +506,7 @@ export const verifyOtp = async (req, res) => {
 
   try {
     const models = getModelsForTenant(tenant);
-    const user = await models.User.findOne({ email: emailValidation.email }).select("+otp +otpExpires +otpAttempts");
+    const user = await models.User.findOne({ email: normalizedEmail }).select("+otp +otpExpires +otpAttempts +password");
 
     if (!user) {
       return res.status(404).json({
@@ -448,12 +523,37 @@ export const verifyOtp = async (req, res) => {
       });
     }
 
-    if (!user.otp || user.otp !== cleanOtp) {
-      // Increment failed attempts
+    if (!isValidVerificationTicket(verificationTicket, user)) {
+      return res.status(403).json({
+        success: false,
+        message: "This sign-up was started again or has expired. Please sign up again to get a new code.",
+        restartRegistration: true,
+      });
+    }
+
+    // Checked before the code is compared: once the attempts are used up,
+    // even the right code is refused until a new one is requested.
+    if ((user.otpAttempts || 0) >= MAX_CODE_ATTEMPTS) {
+      user.otp = undefined;
+      user.otpExpires = undefined;
+      await user.save();
+      return res.status(429).json({
+        success: false,
+        message: "Too many failed OTP attempts. Please request a new OTP.",
+        requiresNewOtp: true
+      });
+    }
+
+    if (!codesMatch(cleanOtp, user.otp)) {
       user.otpAttempts = (user.otpAttempts || 0) + 1;
+      const exhausted = user.otpAttempts >= MAX_CODE_ATTEMPTS;
+      if (exhausted) {
+        user.otp = undefined;
+        user.otpExpires = undefined;
+      }
       await user.save();
 
-      if (user.otpAttempts >= 5) {
+      if (exhausted) {
         return res.status(429).json({
           success: false,
           message: "Too many failed OTP attempts. Please request a new OTP.",
@@ -464,7 +564,7 @@ export const verifyOtp = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid OTP code",
-        attemptsRemaining: 5 - user.otpAttempts
+        attemptsRemaining: MAX_CODE_ATTEMPTS - user.otpAttempts
       });
     }
 
@@ -534,16 +634,12 @@ export const verifyOtp = async (req, res) => {
 };
 
 export const resentOtp = async (req, res) => {
-  const { email } = req.body;
-
-  if (!email) {
-    return res.status(400).json({
-      success: false,
-      message: "Email is required"
-    });
+  const normalizedEmail = normalizeAccountEmail(req.body?.email);
+  if (!normalizedEmail) {
+    return res.status(400).json({ success: false, message: "A valid email is required" });
   }
 
-  const tenant = await resolveTenantForEmail(email);
+  const tenant = await resolveTenantForEmail(normalizedEmail);
   if (!tenant) {
     return res.status(400).json({
       success: false,
@@ -551,18 +647,9 @@ export const resentOtp = async (req, res) => {
     });
   }
 
-  // Validate MAJU email format
-  const emailValidation = validateStudentEmailForTenant(tenant, email);
-  if (!emailValidation.isValid) {
-    return res.status(400).json({
-      success: false,
-      message: emailValidation.error
-    });
-  }
-
   try {
     const models = getModelsForTenant(tenant);
-    const user = await models.User.findOne({ email: emailValidation.email });
+    const user = await models.User.findOne({ email: normalizedEmail }).select("+otpExpires");
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -577,9 +664,8 @@ export const resentOtp = async (req, res) => {
       });
     }
 
-    // Check cooldown period (1 minute)
-    if (user.otpExpires && user.otpExpires > Date.now() - 60000) {
-      const waitTime = Math.ceil((user.otpExpires - Date.now() + 60000) / 1000);
+    const waitTime = resendWaitSeconds(user.otpExpires);
+    if (waitTime > 0) {
       return res.status(429).json({
         success: false,
         message: `Please wait ${waitTime} seconds before requesting a new OTP`,
@@ -588,15 +674,12 @@ export const resentOtp = async (req, res) => {
     }
 
     const otp = generateOtp();
-    const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
-
     user.otp = otp;
-    user.otpExpires = otpExpires;
+    user.otpExpires = new Date(Date.now() + OTP_TTL_MS);
     user.otpAttempts = 0; // Reset attempts
     await user.save();
 
-    // Resend via Gmail
-    const emailSent = await sendOtpEmail(emailValidation.email, user.name, otp, 'Your New OTP Verification Code', tenant);
+    const emailSent = await sendOtpEmail(normalizedEmail, user.name, otp, 'Your New OTP Verification Code', tenant);
 
     if (!emailSent) {
       return res.status(500).json({
@@ -608,7 +691,7 @@ export const resentOtp = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "New OTP sent! Check inbox AND spam folder.",
-      email: emailValidation.email
+      email: normalizedEmail
     });
   } catch (err) {
     console.error("Resend OTP error:", err);
@@ -619,71 +702,43 @@ export const resentOtp = async (req, res) => {
   }
 };
 
+const GENERIC_RESET_RESPONSE = {
+  success: true,
+  message: "If an account exists with this email, a reset OTP has been sent."
+};
+
 export const forgetPassword = async (req, res) => {
-  const { email } = req.body;
-
-  if (!email) {
-    return res.status(400).json({
-      success: false,
-      message: "Email is required"
-    });
+  const normalizedEmail = normalizeAccountEmail(req.body?.email);
+  if (!normalizedEmail) {
+    return res.status(400).json({ success: false, message: "A valid email is required" });
   }
 
-  const tenant = await resolveTenantForEmail(email);
-  if (!tenant) {
-    // Same generic "always success" response as the user-not-found case
-    // below — a domain not on the platform shouldn't be distinguishable
-    // from a domain that is, but the specific email doesn't exist.
-    return res.json({
-      success: true,
-      message: "If an account exists with this email, a reset OTP has been sent."
-    });
-  }
-
-  // Validate MAJU email format
-  const emailValidation = validateStudentEmailForTenant(tenant, email);
-  if (!emailValidation.isValid) {
-    return res.status(400).json({
-      success: false,
-      message: emailValidation.error
-    });
-  }
+  // Unknown domain or unknown account: the same generic answer, so this
+  // can't be used to find out which addresses have accounts.
+  const tenant = await resolveTenantForEmail(normalizedEmail);
+  if (!tenant) return res.json(GENERIC_RESET_RESPONSE);
 
   try {
     const models = getModelsForTenant(tenant);
-    const user = await models.User.findOne({ email: emailValidation.email });
+    const user = await models.User.findOne({ email: normalizedEmail }).select("+resetPasswordExpires");
+    if (!user) return res.json(GENERIC_RESET_RESPONSE);
 
-    // Always return success for security (don't reveal if user exists)
-    if (!user) {
-      return res.json({
-        success: true,
-        message: "If an account exists with this email, a reset OTP has been sent."
-      });
-    }
-
-    // Check if password reset was recently requested
-    if (user.resetPasswordExpires && user.resetPasswordExpires > Date.now() - 60000) {
+    const waitTime = resendWaitSeconds(user.resetPasswordExpires);
+    if (waitTime > 0) {
       return res.status(429).json({
         success: false,
-        message: "Reset OTP was recently sent. Please wait 1 minute before requesting a new one."
+        message: `A reset code was just sent. Please wait ${waitTime} seconds before requesting a new one.`,
+        retryAfter: waitTime
       });
     }
 
     const otp = generateOtp();
-    const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
-
     user.resetPasswordOtp = otp;
-    user.resetPasswordExpires = otpExpires;
+    user.resetPasswordExpires = new Date(Date.now() + OTP_TTL_MS);
+    user.resetPasswordAttempts = 0;
     await user.save();
 
-    // Send password reset via Gmail
-    const emailSent = await sendOtpEmail(
-      emailValidation.email,
-      user.name,
-      otp,
-      'Password Reset OTP',
-      tenant
-    );
+    const emailSent = await sendOtpEmail(normalizedEmail, user.name, otp, 'Password Reset OTP', tenant);
 
     if (!emailSent) {
       return res.status(500).json({
@@ -706,9 +761,10 @@ export const forgetPassword = async (req, res) => {
 };
 
 export const resetPassword = async (req, res) => {
-  const { email, otp, newPassword } = req.body;
+  const { otp, newPassword } = req.body;
+  const normalizedEmail = normalizeAccountEmail(req.body?.email);
 
-  if (!email || !otp || !newPassword) {
+  if (!normalizedEmail || !otp || !newPassword) {
     return res.status(400).json({
       success: false,
       message: "All fields (email, OTP, new password) are required"
@@ -722,44 +778,44 @@ export const resetPassword = async (req, res) => {
     });
   }
 
-  const tenant = await resolveTenantForEmail(email);
+  const tenant = await resolveTenantForEmail(normalizedEmail);
   if (!tenant) {
-    return res.status(400).json({
-      success: false,
-      message: "This email domain is not registered with any university on this platform",
-    });
-  }
-
-  // Validate MAJU email format
-  const emailValidation = validateStudentEmailForTenant(tenant, email);
-  if (!emailValidation.isValid) {
-    return res.status(400).json({
-      success: false,
-      message: emailValidation.error
-    });
+    return res.status(400).json({ success: false, message: "Invalid or expired code" });
   }
 
   const cleanOtp = otp.toString().replace(/\s/g, "");
 
   try {
     const models = getModelsForTenant(tenant);
-    const user = await models.User.findOne({ email: emailValidation.email }).select(
+    const user = await models.User.findOne({ email: normalizedEmail }).select(
       "+resetPasswordOtp +resetPasswordExpires +resetPasswordAttempts"
     );
 
-    if (!user) {
-      return res.status(404).json({
+    if (!user || !user.resetPasswordOtp) {
+      return res.status(400).json({ success: false, message: "Invalid or expired code. Please request a new one." });
+    }
+
+    // Checked before comparing, as in verifyOtp.
+    if ((user.resetPasswordAttempts || 0) >= MAX_CODE_ATTEMPTS) {
+      user.resetPasswordOtp = undefined;
+      user.resetPasswordExpires = undefined;
+      await user.save();
+      return res.status(429).json({
         success: false,
-        message: "User not found"
+        message: "Too many failed attempts. Please request a new reset OTP."
       });
     }
 
-    if (user.resetPasswordOtp !== cleanOtp) {
-      // Increment failed attempts
+    if (!codesMatch(cleanOtp, user.resetPasswordOtp)) {
       user.resetPasswordAttempts = (user.resetPasswordAttempts || 0) + 1;
+      const exhausted = user.resetPasswordAttempts >= MAX_CODE_ATTEMPTS;
+      if (exhausted) {
+        user.resetPasswordOtp = undefined;
+        user.resetPasswordExpires = undefined;
+      }
       await user.save();
 
-      if (user.resetPasswordAttempts >= 5) {
+      if (exhausted) {
         return res.status(429).json({
           success: false,
           message: "Too many failed attempts. Please request a new reset OTP."
@@ -769,7 +825,7 @@ export const resetPassword = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid OTP",
-        attemptsRemaining: 5 - user.resetPasswordAttempts
+        attemptsRemaining: MAX_CODE_ATTEMPTS - user.resetPasswordAttempts
       });
     }
 
@@ -780,12 +836,14 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    const hashedPassword = await hashPassword(newPassword);
-
-    user.password = hashedPassword;
+    user.password = await hashPassword(newPassword);
+    user.passwordChangedAt = new Date();
     user.resetPasswordOtp = undefined;
     user.resetPasswordExpires = undefined;
     user.resetPasswordAttempts = 0;
+    // The code reached this inbox, which is what sign-up verification
+    // proves too.
+    user.isVerified = true;
     await user.save();
 
     res.json({
@@ -820,7 +878,7 @@ export const loginUser = async (req, res) => {
   }
 
   const normalizedEmail = email.trim().toLowerCase();
-  const genericEmailRegex = /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/;
+  const genericEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
   if (!genericEmailRegex.test(normalizedEmail)) {
     return res.status(400).json({
       success: false,
@@ -903,18 +961,28 @@ export const loginUser = async (req, res) => {
       });
     }
 
+    if (user.isBlocked) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account has been blocked. Please contact the administrator.",
+        blocked: true,
+      });
+    }
+
     // Successful password check + stamp last login
     user.lastLoginAt = new Date();
     await user.save();
     recordLogin(models, req, normalizedEmail, user._id, true);
 
-    // Check if user is verified
+    // Not verified yet: the password just proved who this is, so hand back
+    // a verification ticket and let the client finish sign-up from here.
     if (!user.isVerified) {
       return res.status(403).json({
         success: false,
         message: "Account not verified. Please verify your email first.",
         needsVerification: true,
-        email: user.email
+        email: user.email,
+        verificationTicket: issueVerificationTicket(user, tenant.slug),
       });
     }
 
@@ -1223,9 +1291,16 @@ export const changePassword = async (req, res) => {
     }
 
     user.password = await hashPassword(newPassword);
+    // Signs out every other session (middlewares/auth.js); this one gets a
+    // fresh token below.
+    user.passwordChangedAt = new Date();
     await user.save();
 
-    return res.json({ success: true, message: "Password changed successfully" });
+    return res.json({
+      success: true,
+      message: "Password changed successfully",
+      token: generateToken(user._id, req.tenant.slug),
+    });
   } catch (error) {
     console.error("changePassword error:", error);
     return res.status(500).json({ success: false, message: "Failed to change password" });

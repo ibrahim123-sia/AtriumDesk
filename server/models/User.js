@@ -12,7 +12,7 @@ export const userSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/, 'Please enter a valid email']
+    match: [/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/, 'Please enter a valid email']
   },
   password: {
     type: String,
@@ -94,6 +94,12 @@ export const userSchema = new mongoose.Schema({
     default: false,
   },
   lastLoginAt: {
+    type: Date,
+    default: null,
+  },
+  // Set when the password changes (change or reset): tokens issued before
+  // it are refused by `protect`, which signs out every other session.
+  passwordChangedAt: {
     type: Date,
     default: null,
   },

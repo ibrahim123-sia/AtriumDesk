@@ -1,7 +1,7 @@
 // pages/Register.jsx
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { registerUser, verifyOtp, resendOtp } from "../redux/slices/authSlice";
 import { toggleTheme } from "../redux/slices/themeSlice";
@@ -27,12 +27,18 @@ const Register = () => {
   const dispatch = useDispatch();
   const theme = useSelector((s) => s.theme.theme);
   const navigate = useNavigate();
+  const location = useLocation();
+  // Arriving from Login with an unverified account: go straight to the
+  // code step (Login already holds the verification ticket) and send a
+  // fresh code, since the first one has probably expired.
+  const verifyEmail = location.state?.verifyEmail || "";
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(verifyEmail);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [otp, setOtp] = useState("");
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(verifyEmail ? 2 : 1);
+  const resentForLogin = useRef(false);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -81,6 +87,10 @@ const Register = () => {
 
       if (result.success) {
         navigate("/chat", { replace: true });
+      } else if (result.restartRegistration) {
+        toast.error(result.message);
+        setOtp("");
+        setStep(1);
       } else {
         toast.error(result.message || "Invalid OTP");
       }
@@ -90,6 +100,17 @@ const Register = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!verifyEmail || resentForLogin.current) return;
+    resentForLogin.current = true;
+    dispatch(resendOtp({ email: verifyEmail }))
+      .unwrap()
+      .then((result) => {
+        if (result.success) toast.success("We sent a new code to your email");
+        else if (result.message) toast(result.message);
+      });
+  }, [verifyEmail, dispatch]);
 
   const handleResendOtp = async () => {
     try {

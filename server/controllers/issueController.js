@@ -1,4 +1,4 @@
-import { notify } from "../services/notify.js";
+import { notify, safeHtml, multilineHtml } from "../services/notify.js";
 import { suggestDepartment } from "../services/departmentSuggestion.js";
 import { deleteUpload } from "../services/fileStore.js";
 
@@ -63,7 +63,7 @@ export const createIssue = async (req, res) => {
         link: `/staff/issues/${issue._id}`,
         emailSubject: `[${dept.code}] New issue submitted`,
         emailHeading: "New issue assigned to your department",
-        emailBody: `<strong>${issue.title}</strong><br/><br/>From: ${issue.studentName} (${issue.studentEmail})<br/>Category: ${issue.category}<br/><br/>${issue.description}`,
+        emailBody: safeHtml`<strong>${issue.title}</strong><br/><br/>From: ${issue.studentName} (${issue.studentEmail})<br/>Category: ${issue.category}<br/><br/>${multilineHtml(issue.description)}`,
         branding: req.tenant?.branding,
         tenantSlug: req.tenant?.slug,
       });
@@ -163,7 +163,7 @@ export const createIssueFromChat = async (req, res) => {
         link: `/staff/issues/${issue._id}`,
         emailSubject: `[${dept.code}] New issue submitted`,
         emailHeading: "New issue assigned to your department",
-        emailBody: `<strong>${issue.title}</strong><br/><br/>From: ${issue.studentName} (${issue.studentEmail})<br/>Filed from a chatbot conversation.<br/><br/>${finalDescription.replace(/\n/g, "<br/>")}`,
+        emailBody: safeHtml`<strong>${issue.title}</strong><br/><br/>From: ${issue.studentName} (${issue.studentEmail})<br/>Filed from a chatbot conversation.<br/><br/>${multilineHtml(finalDescription)}`,
         branding: req.tenant?.branding,
         tenantSlug: req.tenant?.slug,
       });
@@ -240,7 +240,7 @@ export const addStudentReply = async (req, res) => {
         link: `/staff/issues/${issue._id}`,
         emailSubject: `[${issue.department.code}] Student replied`,
         emailHeading: "Student added a reply",
-        emailBody: `<strong>${issue.title}</strong><br/><br/>${issue.studentName}: ${message.trim()}`,
+        emailBody: safeHtml`<strong>${issue.title}</strong><br/><br/>${issue.studentName}: ${multilineHtml(message.trim())}`,
         branding: req.tenant?.branding,
         tenantSlug: req.tenant?.slug,
       });
@@ -563,7 +563,7 @@ export const updateIssueStatus = async (req, res) => {
     if (student) {
       const reasonLine =
         status === "Rejected" && issue.rejectionReason
-          ? `<br/><br/><strong>Reason:</strong> ${issue.rejectionReason}`
+          ? safeHtml`<br/><br/><strong>Reason:</strong> ${issue.rejectionReason}`
           : "";
       notify(req.models.Notification, student, {
         type: "issue_status_changed",
@@ -572,7 +572,7 @@ export const updateIssueStatus = async (req, res) => {
         link: `/issues/${issue._id}`,
         emailSubject: `Issue update: ${status}`,
         emailHeading: "Your issue status has changed",
-        emailBody: `<strong>${issue.title}</strong><br/><br/>Status: ${previous} → <strong>${status}</strong><br/>Department: ${issue.department.code}${reasonLine}`,
+        emailBody: safeHtml`<strong>${issue.title}</strong><br/><br/>Status: ${previous} → <strong>${status}</strong><br/>Department: ${issue.department.code}${reasonLine}`,
         branding: req.tenant?.branding,
         tenantSlug: req.tenant?.slug,
       });
@@ -662,10 +662,10 @@ export const addStaffReply = async (req, res) => {
         : `${req.user.staffTitle || "Staff"} replied on: ${issue.title}`;
       const reasonLine =
         statusChanged && status === "Rejected" && issue.rejectionReason
-          ? `<br/><br/><strong>Reason:</strong> ${issue.rejectionReason}`
+          ? safeHtml`<br/><br/><strong>Reason:</strong> ${issue.rejectionReason}`
           : "";
       const statusLine = statusChanged
-        ? `<br/><br/><strong>Status:</strong> ${previous} → ${status}${reasonLine}`
+        ? safeHtml`<br/><br/><strong>Status:</strong> ${previous} → ${status}${reasonLine}`
         : "";
       notify(req.models.Notification, student, {
         type: statusChanged ? "issue_status_changed" : "issue_replied",
@@ -674,7 +674,7 @@ export const addStaffReply = async (req, res) => {
         link: `/issues/${issue._id}`,
         emailSubject: statusChanged ? `Issue update: ${status}` : "New reply on your issue",
         emailHeading: titlePrefix,
-        emailBody: `<strong>${issue.title}</strong>${statusLine}<br/><br/><strong>${req.user.name} (${issue.department.code}):</strong> ${message.trim()}`,
+        emailBody: safeHtml`<strong>${issue.title}</strong>${statusLine}<br/><br/><strong>${req.user.name} (${issue.department.code}):</strong> ${multilineHtml(message.trim())}`,
         branding: req.tenant?.branding,
         tenantSlug: req.tenant?.slug,
       });
@@ -751,7 +751,7 @@ export const assignIssue = async (req, res) => {
         link: `/staff/issues/${issue._id}`,
         emailSubject: `[${issue.department.code}] Issue assigned to you`,
         emailHeading: "An issue was assigned to you",
-        emailBody: `<strong>${issue.title}</strong><br/><br/>Assigned by: ${req.user.name}<br/>Department: ${issue.department.code}`,
+        emailBody: safeHtml`<strong>${issue.title}</strong><br/><br/>Assigned by: ${req.user.name}<br/>Department: ${issue.department.code}`,
         branding: req.tenant?.branding,
         tenantSlug: req.tenant?.slug,
       }).catch(() => {});
