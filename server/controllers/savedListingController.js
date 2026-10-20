@@ -1,7 +1,9 @@
 /**
  * Rev 5 §4.5/§10 — saved scholarships/jobs, the foundation for deadline
- * reminders and saved-item-change alerts. See server/models/SavedListing.js.
+ * reminders and saved-item-change alerts, and the student's application
+ * tracker (§6.1). See server/models/SavedListing.js.
  */
+import { APPLICATION_STATUSES } from "../models/SavedListing.js";
 
 // /api/saved is cross-type, so requireFeature can't gate it at the route
 // level the way jobRoutes/scholarshipRoutes do — enforce per listingType
@@ -25,7 +27,16 @@ export const listSaved = async (req, res) => {
     );
     const byId = new Map(listings.map((l) => [l._id.toString(), l]));
     const items = saved
-      .map((s) => ({ savedId: s._id, listing: byId.get(s.listingId.toString()) || null, createdAt: s.createdAt }))
+      .map((s) => ({
+        savedId: s._id,
+        listing: byId.get(s.listingId.toString()) || null,
+        createdAt: s.createdAt,
+        status: s.status || "saved",
+        statusUpdatedAt: s.statusUpdatedAt,
+        appliedAt: s.appliedAt,
+        notes: s.notes || "",
+        documentsReady: s.documentsReady || [],
+      }))
       .filter((item) => item.listing && isTypeEnabled(req.tenant, item.listing.listingType));
     res.json({ success: true, saved: items });
   } catch (error) {
@@ -51,6 +62,52 @@ export const saveListing = async (req, res) => {
   } catch (error) {
     console.error("saveListing error:", error);
     res.status(500).json({ success: false, message: "Failed to save listing" });
+  }
+};
+
+// PATCH /api/saved/:listingId — { status?, notes?, documentsReady? }. The
+// student's own record of where they are; marking one applied that wasn't
+// saved yet ("Did you apply?" after following the official link) saves it.
+export const updateSaved = async (req, res) => {
+  const { listingId } = req.params;
+  const { status, notes, documentsReady } = req.body || {};
+  if (status !== undefined && !APPLICATION_STATUSES.includes(status)) {
+    return res.status(400).json({ success: false, message: `status must be one of: ${APPLICATION_STATUSES.join(", ")}` });
+  }
+  if (notes !== undefined && String(notes).length > 2000) {
+    return res.status(400).json({ success: false, message: "Notes can be at most 2000 characters" });
+  }
+  try {
+    let saved = await req.models.SavedListing.findOne({ userId: req.user._id, listingId });
+    const listing = await req.models.Listing.findOne({
+      _id: listingId,
+      status: saved ? { $in: VISIBLE_STATUSES } : "approved",
+    });
+    if (!listing) return res.status(404).json({ success: false, message: "Listing not found" });
+    if (!isTypeEnabled(req.tenant, listing.listingType)) {
+      return res.status(403).json({ success: false, message: "This module is not enabled for your university." });
+    }
+    if (!saved) {
+      saved = new req.models.SavedListing({ userId: req.user._id, listingId, listingType: listing.listingType });
+    }
+    if (status !== undefined && status !== saved.status) {
+      saved.status = status;
+      saved.statusUpdatedAt = new Date();
+      if (status === "applied" && !saved.appliedAt) saved.appliedAt = new Date();
+    }
+    if (notes !== undefined) saved.notes = String(notes);
+    if (documentsReady !== undefined) {
+      // Only documents this listing actually asks for.
+      const required = new Set(listing.requiredDocuments || []);
+      saved.documentsReady = [...new Set((Array.isArray(documentsReady) ? documentsReady : []).map(String))].filter((d) =>
+        required.has(d)
+      );
+    }
+    await saved.save();
+    res.json({ success: true, saved });
+  } catch (error) {
+    console.error("updateSaved error:", error);
+    res.status(500).json({ success: false, message: "Failed to update saved item" });
   }
 };
 

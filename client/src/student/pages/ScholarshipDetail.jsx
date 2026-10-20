@@ -1,11 +1,15 @@
 import React, { useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { ArrowLeft, Globe2, Calendar, ExternalLink, AlertTriangle, Bookmark, Link2 } from "lucide-react";
+import { ArrowLeft, Globe2, Calendar, ExternalLink, AlertTriangle, Bookmark } from "lucide-react";
 import moment from "moment";
 import { fetchScholarshipById, clearSelectedScholarship } from "../../redux/slices/scholarshipSlice";
 import { fetchSaved, saveListing, unsaveListing } from "../../redux/slices/savedSlice";
 import { getPalette } from "../../administrator/utils/palette";
+import ApplicationTracker from "../components/ApplicationTracker";
+import { markApplyPending } from "../applicationStatus";
+import { DetailUnavailable, DetailLoading, SourcesList } from "../components/DetailStates";
+import { WhatsAppShare } from "../components/ShareActions";
 
 // Defined at module scope, not inside ScholarshipDetail — a component
 // declared inside another component's body is a new function identity
@@ -28,6 +32,7 @@ const ScholarshipDetail = () => {
   const { id } = useParams();
   const dispatch = useDispatch();
   const scholarship = useSelector((s) => s.scholarship.selected);
+  const detailError = useSelector((s) => s.scholarship.detailError);
   const savedIds = useSelector((s) => s.saved.savedIds);
   const theme = useSelector((s) => s.theme.theme);
   const isDark = theme === "dark";
@@ -46,13 +51,10 @@ const ScholarshipDetail = () => {
     dispatch(isSaved ? unsaveListing(id) : saveListing(id));
   };
 
-  if (!scholarship) {
-    return (
-      <div className="h-full flex items-center justify-center" style={{ backgroundColor: C.bg, color: C.muted }}>
-        Loading…
-      </div>
-    );
+  if (detailError) {
+    return <DetailUnavailable message={detailError} backTo="/scholarships" backLabel="Back to scholarships" C={C} />;
   }
+  if (!scholarship) return <DetailLoading C={C} />;
 
   const isStale = moment().diff(moment(scholarship.lastVerifiedAt), "days") > 30;
 
@@ -87,11 +89,7 @@ const ScholarshipDetail = () => {
               <Globe2 className="w-4 h-4" /> {scholarship.organization}
               {scholarship.country && <span>· {scholarship.country}</span>}
             </p>
-            {scholarship.mergedFrom?.length > 0 && (
-              <p className="text-xs mt-1 inline-flex items-center gap-1" style={{ color: C.muted }}>
-                <Link2 className="w-3.5 h-3.5" /> Found on {scholarship.mergedFrom.length + 1} sources
-              </p>
-            )}
+            <SourcesList listing={scholarship} C={C} />
           </div>
 
           {isStale && (
@@ -140,19 +138,25 @@ const ScholarshipDetail = () => {
             <p className="text-xs inline-flex items-center gap-1.5" style={{ color: C.muted }}>
               <Calendar className="w-3.5 h-3.5" /> Last verified {moment(scholarship.lastVerifiedAt).fromNow()}
             </p>
+            <div className="flex items-center gap-2 flex-wrap">
+            <WhatsAppShare title={`${scholarship.title} — ${scholarship.organization}`} C={C} />
             {scholarship.officialLink && (
               <a
                 href={scholarship.officialLink}
                 target="_blank"
                 rel="noreferrer"
+                onClick={() => scholarship.status === "approved" && markApplyPending(scholarship._id)}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-medium"
                 style={{ backgroundColor: C.navy }}
               >
                 Official page <ExternalLink className="w-4 h-4" />
               </a>
             )}
+            </div>
           </div>
         </div>
+
+        {(isSaved || scholarship.status === "approved") && <ApplicationTracker listing={scholarship} C={C} />}
       </div>
     </div>
   );

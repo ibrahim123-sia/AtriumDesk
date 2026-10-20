@@ -120,7 +120,7 @@ export const reportSourceRun = async (req, res) => {
       if (reason === "not_found") {
         // §7.4 delisting signal — tracked separately from a generic
         // failure; recordListingGone requires 2 consecutive confirmations.
-        await recordListingGone(models, sourceId);
+        await recordListingGone(models, sourceId, tenant.slug);
         return res.json({ success: true, applied: "not_found" });
       }
       await recordScrapeFailure(models, sourceId);

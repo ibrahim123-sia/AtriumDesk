@@ -11,6 +11,7 @@
  */
 import { getModelsForTenant } from "../models/registry.js";
 import { resolveTenantBySlug, DEFAULT_TENANT_SLUG } from "../services/tenantRegistry.js";
+import { startOfToday } from "../services/dates.js";
 
 export const getGuestListings = async (req, res) => {
   try {
@@ -27,7 +28,7 @@ export const getGuestListings = async (req, res) => {
       models.Listing.find({ listingType: "scholarship", status: "approved", scope: "internal" })
         .sort({ deadline: 1 })
         .limit(25),
-      models.Listing.find({ listingType: "event", status: "approved", date: { $gte: new Date() } })
+      models.Listing.find({ listingType: "event", status: "approved", date: { $gte: startOfToday() } })
         .sort({ date: 1 })
         .limit(25),
     ]);

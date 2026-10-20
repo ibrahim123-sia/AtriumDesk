@@ -24,6 +24,16 @@ import { notify, sendDigestEmail, safeHtml } from "./notify.js";
 import { evaluateHardRules, MatchState } from "./matching.js";
 import { buildStudentMatchProfile } from "./studentMatchProfile.js";
 import { findDueSources } from "./dueSources.js";
+import { startOfToday } from "./dates.js";
+import { removeListingEmbedding, notifySaversListingClosed } from "../controllers/adminSourceController.js";
+import { OPEN_APPLICATION_STATUSES } from "../models/SavedListing.js";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// A tenant can switch Scholarships/Jobs/Events off; nothing about a disabled
+// module should be emailed (its links would only 403).
+const FEATURE_FOR_TYPE = { scholarship: "scholarships", job: "jobs", event: "events" };
+const isTypeEnabled = (tenant, listingType) => tenant?.enabledFeatures?.[FEATURE_FOR_TYPE[listingType]] !== false;
 
 const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://localhost:8000";
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
@@ -152,17 +162,18 @@ export async function runSlaEscalationCheck() {
  */
 export async function runExpiredListingsCheck() {
   await forEachActiveTenant(async (tenant, models) => {
-    const result = await models.Listing.updateMany(
-      {
-        listingType: { $in: ["scholarship", "job"] },
-        status: "approved",
-        deadline: { $ne: null, $lt: new Date() },
-      },
-      { $set: { status: "expired" } }
-    );
-    if (result.modifiedCount > 0) {
-      console.log(`Expired ${result.modifiedCount} listing(s) for tenant "${tenant.slug}"`);
-    }
+    // The deadline day itself still counts (services/dates.js).
+    const lapsed = await models.Listing.find({
+      listingType: { $in: ["scholarship", "job"] },
+      status: "approved",
+      deadline: { $ne: null, $lt: startOfToday() },
+    }).select("_id title listingType");
+    if (!lapsed.length) return;
+    await models.Listing.updateMany({ _id: { $in: lapsed.map((l) => l._id) } }, { $set: { status: "expired" } });
+    // Out of matching, dedup and the chatbot's listing answers.
+    await Promise.all(lapsed.map((l) => removeListingEmbedding(tenant.slug, l._id)));
+    await notifySaversListingClosed(models, tenant.slug, lapsed, "has closed — its deadline has passed");
+    console.log(`Expired ${lapsed.length} listing(s) for tenant "${tenant.slug}"`);
   });
 }
 
@@ -177,31 +188,49 @@ export async function runExpiredListingsCheck() {
 export async function runDeadlineReminderCheck() {
   await forEachActiveTenant(async (tenant, models) => {
     const now = new Date();
-    const pending = await models.SavedListing.find({ deadlineReminderSentAt: null });
+    // Nothing to remind about once they've applied (or decided not to).
+    const pending = await models.SavedListing.find({
+      deadlineReminderSentAt: null,
+      status: { $in: [null, ...OPEN_APPLICATION_STATUSES] },
+    });
     let sent = 0;
 
     for (const saved of pending) {
       const listing = await models.Listing.findOne({ _id: saved.listingId, status: "approved" });
-      if (!listing || !listing.deadline) continue;
+      if (!listing || !isTypeEnabled(tenant, listing.listingType)) continue;
+      const isEvent = listing.listingType === "event";
+      const when = isEvent ? listing.date : listing.deadline;
+      if (!when) continue;
 
       const user = await models.User.findById(saved.userId);
       if (!user || !user.email) continue;
       const prefs = user.profile?.notifications || {};
       if (prefs.unsubscribeAll) continue;
 
-      const leadDays = prefs.deadlineReminderLeadDays ?? 7;
-      const msUntilDeadline = listing.deadline.getTime() - now.getTime();
-      const withinWindow = msUntilDeadline > 0 && msUntilDeadline <= leadDays * 24 * 60 * 60 * 1000;
-      if (!withinWindow) continue;
+      // Whole days, so a deadline or an event still counts on its own day.
+      const daysLeft = Math.round((startOfToday(when) - startOfToday(now)) / DAY_MS);
+      const leadDays = isEvent ? 1 : (prefs.deadlineReminderLeadDays ?? 7);
+      if (daysLeft < 0 || daysLeft > leadDays) continue;
 
-      const daysLeft = Math.ceil(msUntilDeadline / (24 * 60 * 60 * 1000));
+      const dayWord = daysLeft === 0 ? "today" : daysLeft === 1 ? "tomorrow" : `in ${daysLeft} days`;
+      const payload = isEvent
+        ? {
+            message: `"${listing.title}" is ${dayWord}`,
+            link: `/events/${listing._id}`,
+            emailSubject: `Reminder: ${listing.title} is ${dayWord}`,
+            emailHeading: `"${listing.title}" is ${dayWord}`,
+            emailBody: `You asked to be reminded about this event on ${listing.date.toDateString()}${listing.location ? ` at ${listing.location}` : ""}.`,
+          }
+        : {
+            message: `"${listing.title}" closes ${dayWord}`,
+            link: `/${listing.listingType === "job" ? "jobs" : "scholarships"}/${listing._id}`,
+            emailSubject: `Deadline approaching: ${listing.title}`,
+            emailHeading: `"${listing.title}" closes ${dayWord}`,
+            emailBody: `You saved this ${listing.listingType} — its deadline is ${listing.deadline.toDateString()}. Don't miss it.`,
+          };
       await notify(models.Notification, user, {
         type: "listing_deadline_reminder",
-        message: `"${listing.title}" closes in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`,
-        link: `/${listing.listingType === "job" ? "jobs" : "scholarships"}/${listing._id}`,
-        emailSubject: `Deadline approaching: ${listing.title}`,
-        emailHeading: `"${listing.title}" closes in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`,
-        emailBody: `You saved this ${listing.listingType} — its deadline is ${listing.deadline.toDateString()}. Don't miss it.`,
+        ...payload,
         branding: tenant.branding,
         tenantSlug: tenant.slug,
         includeUnsubscribeLink: true,
@@ -270,9 +299,12 @@ export async function runDigestCheck(now = new Date()) {
       if (prefs.digestFrequency === "weekly" && !isWeeklyDay) continue;
 
       const since = prefs.lastDigestSentAt;
+      // Modules the tenant offers and the student chose (none chosen = all).
+      const wanted = (type) =>
+        isTypeEnabled(tenant, type) && (!prefs.modules?.length || prefs.modules.includes(FEATURE_FOR_TYPE[type]));
       const [scholarships, jobs] = await Promise.all([
-        models.Listing.find(buildListingFilter("scholarship", since)),
-        models.Listing.find(buildListingFilter("job", since)),
+        wanted("scholarship") ? models.Listing.find(buildListingFilter("scholarship", since)) : [],
+        wanted("job") ? models.Listing.find(buildListingFilter("job", since)) : [],
       ]);
       const profile = buildStudentMatchProfile(student);
       const eligible = [...scholarships, ...jobs].filter(

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Link } from "react-router-dom";
-import { Briefcase, Search, MapPin, GraduationCap, Sparkles, Link2 } from "lucide-react";
+import { Briefcase, Search, MapPin, GraduationCap, Sparkles, Link2, UserCog } from "lucide-react";
 import { fetchJobs, fetchMatchedJobs } from "../../redux/slices/jobSlice";
 import { fetchSaved, saveListing, unsaveListing } from "../../redux/slices/savedSlice";
 import MatchedListingCard from "../components/MatchedListingCard";
@@ -9,12 +9,13 @@ import { getPalette } from "../../administrator/utils/palette";
 
 // Rev 5 §6.1/§6.3 — replaces the retired Apify-dependent Job.jsx. Sourced
 // from real company career pages via the Phase 4/5 scraping pipeline.
-const WORK_MODES = ["", "remote", "onsite", "hybrid"];
 
 const Jobs = () => {
   const dispatch = useDispatch();
   const theme = useSelector((s) => s.theme.theme);
-  const { jobs, loading, matched, matchedLoading } = useSelector((s) => s.job);
+  const { jobs, total, loading, matched, matchedLoading } = useSelector((s) => s.job);
+  const careerProfile = useSelector((s) => s.auth.user?.profile?.career);
+  const hasSkills = (careerProfile?.skills || []).length > 0;
   const savedIds = useSelector((s) => s.saved.savedIds);
   const [search, setSearch] = useState("");
   const [workMode, setWorkMode] = useState("");
@@ -46,6 +47,15 @@ const Jobs = () => {
   useEffect(() => {
     dispatch(fetchSaved());
   }, [dispatch]);
+
+  const loadMore = () => {
+    dispatch(fetchJobs({
+      search: search || undefined,
+      workMode: workMode || undefined,
+      isFreshGradFriendly: freshGradOnly ? true : undefined,
+      offset: jobs.length,
+    }));
+  };
 
   const toggleSave = (listingId) => {
     dispatch(savedIds.includes(listingId) ? unsaveListing(listingId) : saveListing(listingId));
@@ -79,6 +89,20 @@ const Jobs = () => {
           </div>
         </div>
 
+        {view === "matched" && !hasSkills && (
+          <div
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl border"
+            style={{ borderColor: `${C.navy}55`, backgroundColor: `${C.navy}0D` }}
+          >
+            <p className="text-sm" style={{ color: C.text }}>
+              Add your skills (or upload your CV) and each job will show which of its skills you already have.
+            </p>
+            <Link to="/profile" className="inline-flex items-center gap-1.5 text-sm font-medium shrink-0" style={{ color: C.navy }}>
+              <UserCog className="w-4 h-4" /> Complete profile
+            </Link>
+          </div>
+        )}
+
         {view === "matched" ? (
           matchedLoading ? (
             <div className="text-center py-12 text-sm" style={{ color: C.muted }}>Finding your matches…</div>
@@ -86,7 +110,7 @@ const Jobs = () => {
             <div className="text-center py-16 rounded-xl border" style={{ borderColor: C.border, backgroundColor: C.surface }}>
               <Sparkles className="w-12 h-12 mx-auto mb-3" style={{ color: C.muted }} />
               <p className="text-base font-medium" style={{ color: C.text }}>No matches yet</p>
-              <p className="text-sm mt-1" style={{ color: C.muted }}>Complete your profile (skills, work mode, city) for better matches, or check back soon.</p>
+              <p className="text-sm mt-1" style={{ color: C.muted }}>Nothing open fits your work mode and city right now — check Browse all, or come back soon.</p>
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
@@ -137,6 +161,7 @@ const Jobs = () => {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search by title, company, or skill..."
+                  aria-label="Search jobs"
                   className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border focus:outline-none"
                   style={{ backgroundColor: C.surface, borderColor: C.border, color: C.text }}
                 />
@@ -144,6 +169,7 @@ const Jobs = () => {
               <select
                 value={workMode}
                 onChange={(e) => setWorkMode(e.target.value)}
+                aria-label="Work mode"
                 className="px-3 py-2.5 text-sm rounded-lg border focus:outline-none"
                 style={{ backgroundColor: C.surface, borderColor: C.border, color: C.text }}
               >
@@ -158,7 +184,7 @@ const Jobs = () => {
               </label>
             </div>
 
-            {loading ? (
+            {loading && jobs.length === 0 ? (
               <div className="text-center py-12 text-sm" style={{ color: C.muted }}>Loading…</div>
             ) : jobs.length === 0 ? (
               <div className="text-center py-16 rounded-xl border" style={{ borderColor: C.border, backgroundColor: C.surface }}>
@@ -202,6 +228,18 @@ const Jobs = () => {
                     )}
                   </Link>
                 ))}
+              </div>
+            )}
+            {jobs.length > 0 && jobs.length < total && (
+              <div className="text-center">
+                <button
+                  onClick={loadMore}
+                  disabled={loading}
+                  className="px-4 py-2 rounded-lg border text-sm font-medium disabled:opacity-60"
+                  style={{ borderColor: C.border, color: C.text }}
+                >
+                  {loading ? "Loading…" : `Load more (${total - jobs.length} more)`}
+                </button>
               </div>
             )}
           </>

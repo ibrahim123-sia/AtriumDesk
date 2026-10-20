@@ -4,6 +4,7 @@ import fetch from "node-fetch";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { getModelsForTenant } from "../models/registry.js";
 import { resolveTenantBySlug, DEFAULT_TENANT_SLUG } from "../services/tenantRegistry.js";
+import { startOfToday } from "../services/dates.js";
 import { escapeRegex } from "../services/escapeRegex.js";
 
 // Python FastAPI backend URL — RAG lives here
@@ -243,7 +244,7 @@ async function buildFollowUpChips(tenantSlug, question) {
     const event = await models.Listing.findOne({
       listingType: "event",
       status: "approved",
-      date: { $gte: new Date() },
+      date: { $gte: startOfToday() },
     }).sort({ date: 1 });
     if (event) {
       chips.push(`Upcoming: ${event.title} · ${new Date(event.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`);

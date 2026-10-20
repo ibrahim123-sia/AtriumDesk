@@ -1,11 +1,15 @@
 import React, { useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { ArrowLeft, MapPin, Calendar, ExternalLink, AlertTriangle, Bookmark, Link2 } from "lucide-react";
+import { ArrowLeft, MapPin, Calendar, ExternalLink, AlertTriangle, Bookmark } from "lucide-react";
 import moment from "moment";
 import { fetchJobById, clearSelectedJob } from "../../redux/slices/jobSlice";
 import { fetchSaved, saveListing, unsaveListing } from "../../redux/slices/savedSlice";
 import { getPalette } from "../../administrator/utils/palette";
+import ApplicationTracker from "../components/ApplicationTracker";
+import { markApplyPending } from "../applicationStatus";
+import { DetailUnavailable, DetailLoading, SourcesList } from "../components/DetailStates";
+import { WhatsAppShare } from "../components/ShareActions";
 
 // Defined at module scope, not inside JobDetail — a component declared
 // inside another component's body is a new function identity every render,
@@ -23,6 +27,7 @@ const JobDetail = () => {
   const { id } = useParams();
   const dispatch = useDispatch();
   const job = useSelector((s) => s.job.selected);
+  const detailError = useSelector((s) => s.job.detailError);
   const skillGaps = useSelector((s) => s.job.selectedSkillGaps);
   const savedIds = useSelector((s) => s.saved.savedIds);
   const theme = useSelector((s) => s.theme.theme);
@@ -42,13 +47,8 @@ const JobDetail = () => {
     dispatch(isSaved ? unsaveListing(id) : saveListing(id));
   };
 
-  if (!job) {
-    return (
-      <div className="h-full flex items-center justify-center" style={{ backgroundColor: C.bg, color: C.muted }}>
-        Loading…
-      </div>
-    );
-  }
+  if (detailError) return <DetailUnavailable message={detailError} backTo="/jobs" backLabel="Back to jobs" C={C} />;
+  if (!job) return <DetailLoading C={C} />;
 
   const isStale = moment().diff(moment(job.lastVerifiedAt), "days") > 30;
 
@@ -85,11 +85,7 @@ const JobDetail = () => {
                 <MapPin className="w-3.5 h-3.5" /> {job.location}
               </p>
             )}
-            {job.mergedFrom?.length > 0 && (
-              <p className="text-xs mt-1 inline-flex items-center gap-1" style={{ color: C.muted }}>
-                <Link2 className="w-3.5 h-3.5" /> Found on {job.mergedFrom.length + 1} sources
-              </p>
-            )}
+            <SourcesList listing={job} C={C} />
           </div>
 
           {isStale && (
@@ -145,19 +141,25 @@ const JobDetail = () => {
             <p className="text-xs inline-flex items-center gap-1.5" style={{ color: C.muted }}>
               <Calendar className="w-3.5 h-3.5" /> Last verified {moment(job.lastVerifiedAt).fromNow()}
             </p>
-            {job.officialLink && (
-              <a
-                href={job.officialLink}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-medium"
-                style={{ backgroundColor: C.navy }}
-              >
-                Apply <ExternalLink className="w-4 h-4" />
-              </a>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <WhatsAppShare title={`${job.title} — ${job.organization}`} C={C} />
+              {job.officialLink && (
+                <a
+                  href={job.officialLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => job.status === "approved" && markApplyPending(job._id)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-medium"
+                  style={{ backgroundColor: C.navy }}
+                >
+                  Apply <ExternalLink className="w-4 h-4" />
+                </a>
+              )}
+            </div>
           </div>
         </div>
+
+        {(isSaved || job.status === "approved") && <ApplicationTracker listing={job} C={C} />}
       </div>
     </div>
   );

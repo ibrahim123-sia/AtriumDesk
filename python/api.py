@@ -533,15 +533,25 @@ class ExplainMatchRequest(BaseModel):
     listing: dict
     match_state: str
     gaps: list = []
+    unverified: list = []
+    skills: Optional[List[str]] = None       # jobs only
+    skill_gaps: Optional[List[str]] = None   # jobs only
 
 
 @app.post("/listings/explain", dependencies=[Depends(verify_internal_secret)])
-async def explain_match_endpoint(request: ExplainMatchRequest):
+def explain_match_endpoint(request: ExplainMatchRequest):
+    # Sync on purpose: a blocking LLM call, run in Starlette's threadpool.
     import listing_explain
 
     try:
         explanation = listing_explain.explain_match(
-            request.profile, request.listing, request.match_state, request.gaps
+            request.profile,
+            request.listing,
+            request.match_state,
+            request.gaps,
+            unverified=request.unverified,
+            skills=request.skills,
+            skill_gaps=request.skill_gaps,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Explanation generation failed: {exc}")

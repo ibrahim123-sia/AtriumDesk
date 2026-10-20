@@ -34,11 +34,21 @@ export const getMatchedJobs = async (req, res) => {
         };
       })
       .filter((m) => m.state !== MatchState.EXCLUDED)
-      .sort((a, b) => (a.state === b.state ? 0 : a.state === MatchState.ELIGIBLE ? -1 : 1));
+      // Compatible roles first, and among them the ones needing the fewest
+      // new skills.
+      .sort(
+        (a, b) =>
+          (a.state === b.state ? 0 : a.state === MatchState.ELIGIBLE ? -1 : 1) ||
+          (a.skillGaps?.length || 0) - (b.skillGaps?.length || 0)
+      );
 
     await Promise.all(
       matched.slice(0, EXPLAIN_TOP_N).map(async (m) => {
-        m.explanation = await getOrCreateExplanation(req.models, profile, m.listing, m.state, m.gaps);
+        m.explanation = await getOrCreateExplanation(req.models, profile, m.listing, m.state, m.gaps, {
+          unverified: m.unverified,
+          skills: profileSkills,
+          skillGaps: m.skillGaps,
+        });
       })
     );
 

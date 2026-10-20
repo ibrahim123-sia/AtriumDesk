@@ -20,6 +20,7 @@ import {
   createListing,
   updateListing,
   approveListing,
+  fetchListingDetail,
   rejectListing,
   deleteListing,
   unmergeListing,
@@ -138,6 +139,8 @@ const ListingsTab = ({ type }) => {
   const [form, setForm] = useState({});
   const [addOpen, setAddOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  // For a revision (a re-scrape of a live listing): that live listing.
+  const [revisionOriginal, setRevisionOriginal] = useState(null);
   const fields = FIELD_CONFIGS[type];
 
   useEffect(() => {
@@ -148,7 +151,24 @@ const ListingsTab = ({ type }) => {
     setDrawerListing(listing);
     setForm(toFormValue(listing, fields));
     setRejectReason("");
+    setRevisionOriginal(null);
+    if (listing.revisionOf) {
+      dispatch(fetchListingDetail(listing._id))
+        .unwrap()
+        .then((result) => result.success && setRevisionOriginal(result.original));
+    }
   };
+
+  // Fields where the revision differs from the live listing.
+  const revisionChanges = revisionOriginal
+    ? fields
+        .map((f) => {
+          const before = toFormValue(revisionOriginal, [f])[f.key];
+          const after = toFormValue(drawerListing, [f])[f.key];
+          return String(before ?? "") === String(after ?? "") ? null : { label: f.label, before, after };
+        })
+        .filter(Boolean)
+    : [];
   const openAdd = () => {
     setForm(toFormValue({}, fields));
     setAddOpen(true);
@@ -223,7 +243,10 @@ const ListingsTab = ({ type }) => {
 
   const onApprove = async () => {
     const result = await dispatch(approveListing(drawerListing._id)).unwrap();
-    if (result.success) { toast.success("Approved"); setDrawerListing(null); }
+    if (result.success) {
+      toast.success(result.appliedRevision ? "Update published — students who saved it were told what changed" : "Approved");
+      setDrawerListing(null);
+    }
     else toast.error(result.message || "Failed to approve");
   };
   const onReject = async () => {
@@ -297,7 +320,14 @@ const ListingsTab = ({ type }) => {
           <tbody>
             {listings.map((l) => (
               <AdminTableRow key={l._id} onClick={() => openDrawer(l)}>
-                <AdminTableCell><span className="font-medium" style={{ color: C.text }}>{l.title}</span></AdminTableCell>
+                <AdminTableCell>
+                  <span className="font-medium" style={{ color: C.text }}>{l.title}</span>
+                  {l.revisionOf && l.status === "pending" && (
+                    <span className="ml-2 px-1.5 py-0.5 text-[10px] rounded-full font-bold uppercase" style={{ backgroundColor: `${C.navy}1A`, color: C.navy }}>
+                      Update
+                    </span>
+                  )}
+                </AdminTableCell>
                 <AdminTableCell><span style={{ color: C.muted }}>{l.organization}</span></AdminTableCell>
                 <AdminTableCell>
                   <span className="px-2 py-0.5 text-xs rounded-full font-medium" style={{ backgroundColor: `${statusColor(l.status, C)}1A`, color: statusColor(l.status, C) }}>
@@ -328,6 +358,29 @@ const ListingsTab = ({ type }) => {
                 <X className="w-5 h-5" style={{ color: C.muted }} />
               </button>
             </div>
+            {!addOpen && drawerListing?.revisionOf && drawerListing.status === "pending" && (
+              <div className="p-3 rounded-lg border space-y-2" style={{ borderColor: `${C.navy}55`, backgroundColor: `${C.navy}0D` }}>
+                <p className="text-sm font-medium" style={{ color: C.text }}>
+                  A re-scrape found changes to a live listing. Approving publishes them onto it (students who saved it are told).
+                </p>
+                {!revisionOriginal ? (
+                  <p className="text-xs" style={{ color: C.muted }}>Loading the live version…</p>
+                ) : revisionChanges.length === 0 ? (
+                  <p className="text-xs" style={{ color: C.muted }}>No field differs from the live listing.</p>
+                ) : (
+                  <ul className="text-xs space-y-1.5">
+                    {revisionChanges.map((c) => (
+                      <li key={c.label}>
+                        <span className="font-semibold" style={{ color: C.text }}>{c.label}: </span>
+                        <span style={{ color: C.red, textDecoration: "line-through" }}>{String(c.before || "—").slice(0, 120)}</span>
+                        {" → "}
+                        <span style={{ color: C.green }}>{String(c.after || "—").slice(0, 120)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             {fields.map(renderField)}
             {!addOpen && drawerListing?.mergedFrom?.length > 0 && (
               <div className="space-y-2 pt-2 border-t" style={{ borderColor: C.border }}>

@@ -293,7 +293,7 @@ def _llm_chat_gemini(messages, temperature):
         raise RuntimeError(f"Gemini API returned status {response.status_code}: {response.text}")
 
 
-def _llm_chat_groq(messages, temperature, max_tokens):
+def _llm_chat_groq(messages, temperature, max_tokens, reasoning_effort=None):
     """Call Groq, rolling over to the next API key when one is exhausted.
 
     `config.GROQ_API_KEYS` holds the keys in priority order (primary first,
@@ -313,11 +313,20 @@ def _llm_chat_groq(messages, temperature, max_tokens):
     for idx, api_key in enumerate(keys):
         try:
             client = _get_groq_client(api_key)
+            # Reasoning models (gpt-oss) count their reasoning against
+            # max_tokens; a short-answer caller can ask for less of it so the
+            # answer itself isn't cut off.
+            extra = (
+                {"extra_body": {"reasoning_effort": reasoning_effort}}
+                if reasoning_effort and "gpt-oss" in config.GROQ_MODEL
+                else {}
+            )
             response = client.chat.completions.create(
                 model=config.GROQ_MODEL,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                **extra,
             )
             if idx > 0:
                 print(f"  Groq answered on key #{idx + 1} (primary key was unavailable).")
@@ -343,7 +352,7 @@ def _llm_chat_groq(messages, temperature, max_tokens):
             ) from exc
 
 
-def _llm_chat(messages, temperature, max_tokens):
+def _llm_chat(messages, temperature, max_tokens, reasoning_effort=None):
     """Backend-agnostic chat call. Returns the assistant text or raises.
 
     Routes to local Ollama or cloud models based on `config.USE_LOCAL_LLM`.
@@ -389,7 +398,7 @@ def _llm_chat(messages, temperature, max_tokens):
         elif provider == "groq":
             try:
                 print(f"  Attempting to call Groq ({config.GROQ_MODEL})...")
-                return _llm_chat_groq(messages, temperature, max_tokens)
+                return _llm_chat_groq(messages, temperature, max_tokens, reasoning_effort)
             except Exception as exc:
                 err_msg = f"Groq call failed: {exc}"
                 print(f"  Warning: {err_msg}")

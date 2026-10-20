@@ -55,12 +55,13 @@ export const fetchMatchedEvents = createAsyncThunk(
 const eventSlice = createSlice({
   name: "event",
   initialState: {
-    events: [], total: 0, selected: null, loading: false, detailLoading: false,
-    matched: [], matchedLoading: false,
+    events: [], total: 0, selected: null, loading: false, detailLoading: false, detailError: null,
+    matched: [], matchedLoading: false, matchedHasSignals: true,
   },
   reducers: {
     clearSelectedEvent(state) {
       state.selected = null;
+      state.detailError = null;
     },
   },
   extraReducers: (builder) => {
@@ -74,16 +75,23 @@ const eventSlice = createSlice({
         }
       })
       .addCase(fetchEvents.rejected, (state) => { state.loading = false; })
-      .addCase(fetchEventById.pending, (state) => { state.detailLoading = true; })
+      .addCase(fetchEventById.pending, (state) => {
+        state.detailLoading = true;
+        state.detailError = null;
+      })
       .addCase(fetchEventById.fulfilled, (state, action) => {
         state.detailLoading = false;
         if (action.payload.success) state.selected = action.payload.event;
+        else state.detailError = action.payload.message || "This event isn't available";
       })
       .addCase(fetchEventById.rejected, (state) => { state.detailLoading = false; })
       .addCase(fetchMatchedEvents.pending, (state) => { state.matchedLoading = true; })
       .addCase(fetchMatchedEvents.fulfilled, (state, action) => {
         state.matchedLoading = false;
-        if (action.payload.success) state.matched = action.payload.matched;
+        if (action.payload.success) {
+          state.matched = action.payload.matched;
+          state.matchedHasSignals = action.payload.hasSignals !== false;
+        }
       })
       .addCase(fetchMatchedEvents.rejected, (state) => { state.matchedLoading = false; });
   },

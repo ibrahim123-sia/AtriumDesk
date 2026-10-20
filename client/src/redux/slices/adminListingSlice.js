@@ -88,6 +88,19 @@ export const unmergeListing = createAsyncThunk(
   }
 );
 
+// A revision comes back with the live listing it would update.
+export const fetchListingDetail = createAsyncThunk(
+  "adminListing/fetchDetail",
+  async (id, { getState }) => {
+    try {
+      const { data } = await axios.get(`/api/admin/listings/${id}`, authHeader(getState));
+      return data;
+    } catch (error) {
+      return { success: false, message: errorMessage(error, "Failed to load listing") };
+    }
+  }
+);
+
 export const deleteListing = createAsyncThunk(
   "adminListing/delete",
   async (id, { getState }) => {
@@ -121,7 +134,14 @@ const adminListingSlice = createSlice({
         if (action.payload.success) state.listings = [action.payload.listing, ...state.listings];
       })
       .addCase(updateListing.fulfilled, setListing)
-      .addCase(approveListing.fulfilled, setListing)
+      .addCase(approveListing.fulfilled, (state, action) => {
+        if (!action.payload.success) return;
+        // An approved revision was folded into the live listing and removed.
+        if (action.payload.appliedRevision) {
+          state.listings = state.listings.filter((l) => l._id !== action.meta.arg);
+        }
+        setListing(state, action);
+      })
       .addCase(rejectListing.fulfilled, setListing)
       .addCase(unmergeListing.fulfilled, (state, action) => {
         if (!action.payload.success) return;

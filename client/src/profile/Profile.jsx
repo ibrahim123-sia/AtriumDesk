@@ -151,6 +151,8 @@ const Profile = () => {
     digestFrequency: p.notifications?.digestFrequency || "off",
     deadlineReminderLeadDays: p.notifications?.deadlineReminderLeadDays ?? 7,
     unsubscribeAll: p.notifications?.unsubscribeAll || false,
+    // Empty = every module the university offers.
+    modules: p.notifications?.modules || [],
   });
   const [savingDetails, setSavingDetails] = useState(false);
 
@@ -245,6 +247,11 @@ const Profile = () => {
   const [changingPw, setChangingPw] = useState(false);
 
   const C = getPalette(isDark, tenantBranding);
+  // Digest modules this university offers (the digest covers scholarships and jobs).
+  const digestModules = [
+    { key: "scholarships", label: "Scholarships" },
+    { key: "jobs", label: "Jobs" },
+  ].filter((m) => tenantBranding?.enabledFeatures?.[m.key] !== false);
 
   const onPickAvatar = (e) => {
     const file = e.target.files?.[0];
@@ -774,6 +781,30 @@ const Profile = () => {
                   />
                 </Field>
               </div>
+              {digestModules.length > 1 && (
+                <fieldset className="space-y-1.5">
+                  <legend className="text-xs font-medium mb-1" style={{ color: C.muted }}>Include in the digest</legend>
+                  {digestModules.map(({ key, label }) => {
+                    const chosen = notifPrefs.modules.length ? notifPrefs.modules : digestModules.map((m) => m.key);
+                    const checked = chosen.includes(key);
+                    return (
+                      <label key={key} className="flex items-center gap-2 text-sm mr-4" style={{ color: C.text }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          // Keep at least one; turn the digest off to get none.
+                          disabled={checked && chosen.length === 1}
+                          onChange={() => {
+                            const next = checked ? chosen.filter((k) => k !== key) : [...chosen, key];
+                            setNotifPrefs({ ...notifPrefs, modules: next.length === digestModules.length ? [] : next });
+                          }}
+                        />
+                        {label}
+                      </label>
+                    );
+                  })}
+                </fieldset>
+              )}
               <label className="flex items-center gap-2 text-sm" style={{ color: C.text }}>
                 <input
                   type="checkbox"

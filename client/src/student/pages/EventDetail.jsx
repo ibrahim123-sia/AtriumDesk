@@ -1,15 +1,20 @@
 import React, { useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { ArrowLeft, MapPin, Calendar, ExternalLink } from "lucide-react";
+import { ArrowLeft, MapPin, Calendar, ExternalLink, Bell, BellRing } from "lucide-react";
 import moment from "moment";
 import { fetchEventById, clearSelectedEvent } from "../../redux/slices/eventSlice";
+import { fetchSaved, saveListing, unsaveListing } from "../../redux/slices/savedSlice";
 import { getPalette } from "../../administrator/utils/palette";
+import { DetailUnavailable, DetailLoading } from "../components/DetailStates";
+import { AddToCalendar, WhatsAppShare } from "../components/ShareActions";
 
 const EventDetail = () => {
   const { id } = useParams();
   const dispatch = useDispatch();
   const event = useSelector((s) => s.event.selected);
+  const detailError = useSelector((s) => s.event.detailError);
+  const savedIds = useSelector((s) => s.saved.savedIds);
   const theme = useSelector((s) => s.theme.theme);
   const isDark = theme === "dark";
   const tenantBranding = useSelector((s) => s.tenant.branding);
@@ -18,18 +23,16 @@ const EventDetail = () => {
 
   useEffect(() => {
     dispatch(fetchEventById(id));
+    dispatch(fetchSaved());
     return () => dispatch(clearSelectedEvent());
   }, [dispatch, id]);
 
-  if (!event) {
-    return (
-      <div className="h-full flex items-center justify-center" style={{ backgroundColor: C.bg, color: C.muted }}>
-        Loading…
-      </div>
-    );
-  }
+  if (detailError) return <DetailUnavailable message={detailError} backTo="/events" backLabel="Back to events" C={C} />;
+  if (!event) return <DetailLoading C={C} />;
 
-  const isPast = moment(event.date).isBefore(moment());
+  // An event is "past" once its day is over, not from the moment it starts.
+  const isPast = moment(event.date).isBefore(moment().startOf("day"));
+  const isSaved = savedIds.includes(event._id);
 
   return (
     <div className="h-full overflow-y-auto" style={{ backgroundColor: C.bg, color: C.text }}>
@@ -68,8 +71,22 @@ const EventDetail = () => {
             </p>
           )}
 
-          {event.officialLink && (
-            <div className="pt-3 border-t" style={{ borderColor: C.border }}>
+          <div className="pt-3 border-t flex items-center gap-2 flex-wrap" style={{ borderColor: C.border }}>
+            {!isPast && (
+              <button
+                type="button"
+                onClick={() => dispatch(isSaved ? unsaveListing(event._id) : saveListing(event._id))}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium"
+                style={{ borderColor: C.border, color: isSaved ? C.navy : C.text }}
+                aria-pressed={isSaved}
+              >
+                {isSaved ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                {isSaved ? "Reminder on" : "Remind me"}
+              </button>
+            )}
+            {!isPast && <AddToCalendar event={event} C={C} />}
+            <WhatsAppShare title={`${event.title} — ${moment(event.date).format("MMM D")}`} C={C} />
+            {event.officialLink && (
               <a
                 href={event.officialLink}
                 target="_blank"
@@ -79,7 +96,10 @@ const EventDetail = () => {
               >
                 More details <ExternalLink className="w-4 h-4" />
               </a>
-            </div>
+            )}
+          </div>
+          {isSaved && !isPast && (
+            <p className="text-xs" style={{ color: C.muted }}>We'll remind you the day before.</p>
           )}
         </div>
       </div>

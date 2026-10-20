@@ -42,6 +42,7 @@ const IssueDetail = lazy(() => import("./student/pages/IssueDetail"));
 const Scholarship = lazy(() => import("./student/pages/Scholarship"));
 const ScholarshipDetail = lazy(() => import("./student/pages/ScholarshipDetail"));
 const Profile = lazy(() => import("./profile/Profile"));
+const Saved = lazy(() => import("./student/pages/Saved"));
 
 const StaffShell = lazy(() => import("./staff/layout/StaffShell"));
 const StaffIssues = lazy(() => import("./staff/pages/StaffIssues"));
@@ -248,6 +249,11 @@ const App = () => {
           <Route path="issues/:id" element={
             <ProtectedRoute roles={["student"]}>
               <IssueDetail />
+            </ProtectedRoute>
+          } />
+          <Route path="saved" element={
+            <ProtectedRoute roles={["student"]}>
+              <Saved />
             </ProtectedRoute>
           } />
           {/* Universal — every authenticated role manages their own profile */}

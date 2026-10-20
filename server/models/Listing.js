@@ -42,6 +42,11 @@ const listingSchema = new mongoose.Schema(
     // sourceId=null; scraped ones point back to the Source that created them.
     source: { type: String, enum: ["scraped", "manual"], required: true },
     sourceId: { type: mongoose.Schema.Types.ObjectId, ref: "Source", default: null },
+    // A re-scrape of a source whose listing is already live doesn't touch
+    // it: the new extraction becomes a pending revision of it (Rev 5 §7.2
+    // "update, flag for review"). Approving the revision copies its fields
+    // onto the live listing, which keeps its id, savers and merges.
+    revisionOf: { type: mongoose.Schema.Types.ObjectId, ref: "Listing", default: null, index: true },
     // Hash of the extracted content at scrape time — lets a re-scrape of the
     // same source detect "nothing changed" without re-running extraction.
     contentHash: { type: String, default: null },

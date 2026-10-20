@@ -6,7 +6,7 @@
 // (pure functions, no DB, no network — uses Node's built-in test runner)
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluateHardRules, MatchState } from "../services/matching.js";
+import { evaluateHardRules, MatchState, describeUnverified } from "../services/matching.js";
 
 const NOW = new Date("2026-06-01T00:00:00Z");
 
@@ -36,14 +36,19 @@ test("eligible: deadline is still in the future", () => {
   assert.equal(result.state, MatchState.ELIGIBLE);
 });
 
-test("excluded: degree level does not match at all", () => {
+test("excluded: the student is already past the level the award funds", () => {
   const result = evaluateHardRules(
-    { degreeLevel: "bachelors" },
     { degreeLevel: "masters" },
+    { degreeLevel: "bachelors" },
     NOW
   );
   assert.equal(result.state, MatchState.EXCLUDED);
   assert.match(result.reasons[0], /degree level/i);
+});
+
+test("eligible: a bachelor's student is the audience for a master's scholarship", () => {
+  const result = evaluateHardRules({ degreeLevel: "bachelors" }, { degreeLevel: "masters" }, NOW);
+  assert.equal(result.state, MatchState.ELIGIBLE);
 });
 
 test("excluded: work mode incompatible (onsite-only listing vs remote-only preference)", () => {
@@ -111,15 +116,71 @@ test("gaps record every numeric shortfall, not just the first", () => {
   assert.deepEqual(fields, ["cgpa", "ieltsScore", "toeflScore"]);
 });
 
-test("missing profile value neither excludes nor near-misses (cannot verify)", () => {
+test("unverified: stated requirements the profile can't answer are never called eligible", () => {
   const result = evaluateHardRules(
     { cgpa: null, degreeLevel: null, workModePreference: null },
     { minCgpa: 3.5, degreeLevel: "masters", workMode: "onsite", minIelts: 7.0 },
     NOW
   );
-  assert.equal(result.state, MatchState.ELIGIBLE);
+  assert.equal(result.state, MatchState.UNVERIFIED);
   assert.deepEqual(result.gaps, []);
   assert.deepEqual(result.reasons, []);
+  assert.deepEqual(
+    result.unverified.map((u) => u.field).sort(),
+    ["cgpa", "degreeLevel", "englishTest"]
+  );
+});
+
+test("eligible: an empty profile against a listing with no stated requirements", () => {
+  const result = evaluateHardRules({}, { deadline: "2026-12-31T00:00:00Z" }, NOW);
+  assert.equal(result.state, MatchState.ELIGIBLE);
+  assert.deepEqual(result.unverified, []);
+});
+
+test("excluded beats unverified: a passed deadline rules out an incomplete profile", () => {
+  const result = evaluateHardRules({}, { minCgpa: 3.0, deadline: "2026-01-01T00:00:00Z" }, NOW);
+  assert.equal(result.state, MatchState.EXCLUDED);
+});
+
+test("near-miss beats unverified, and still lists what's missing", () => {
+  const result = evaluateHardRules({ cgpa: 2.9 }, { minCgpa: 3.0, minIelts: 6.5 }, NOW);
+  assert.equal(result.state, MatchState.NEAR_MISS);
+  assert.equal(result.unverified[0].field, "englishTest");
+});
+
+test("English tests are alternatives: IELTS met, no TOEFL -> eligible", () => {
+  const result = evaluateHardRules({ ieltsScore: 7.0 }, { minIelts: 6.5, minToefl: 90 }, NOW);
+  assert.equal(result.state, MatchState.ELIGIBLE);
+  assert.deepEqual(result.gaps, []);
+});
+
+test("English tests are alternatives: TOEFL met makes a low IELTS irrelevant", () => {
+  const result = evaluateHardRules({ ieltsScore: 5.0, toeflScore: 95 }, { minIelts: 6.5, minToefl: 90 }, NOW);
+  assert.equal(result.state, MatchState.ELIGIBLE);
+});
+
+test("English: excluded only when every test taken is beyond its margin", () => {
+  const near = evaluateHardRules({ ieltsScore: 6.0, toeflScore: 50 }, { minIelts: 6.5, minToefl: 90 }, NOW);
+  assert.equal(near.state, MatchState.NEAR_MISS);
+  const far = evaluateHardRules({ ieltsScore: 4.0, toeflScore: 50 }, { minIelts: 6.5, minToefl: 90 }, NOW);
+  assert.equal(far.state, MatchState.EXCLUDED);
+});
+
+test("city matching ignores the country suffix and case", () => {
+  const result = evaluateHardRules(
+    { preferredCity: "karachi" },
+    { workMode: "onsite", location: "Karachi, Pakistan" },
+    NOW
+  );
+  assert.equal(result.state, MatchState.ELIGIBLE);
+});
+
+test("describeUnverified lists what to add in plain words", () => {
+  const text = describeUnverified([
+    { field: "cgpa", required: 3 },
+    { field: "englishTest", required: { ielts: 6.5, toefl: 90 } },
+  ]);
+  assert.equal(text, "your CGPA (needs 3) and an English test score (IELTS 6.5 or TOEFL 90)");
 });
 
 test("missing requirement value means no check is applied for that field", () => {
@@ -129,8 +190,8 @@ test("missing requirement value means no check is applied for that field", () =>
 
 test("excluded state takes priority over a simultaneous near-miss", () => {
   const result = evaluateHardRules(
-    { cgpa: 2.9, degreeLevel: "bachelors" },
-    { minCgpa: 3.0, degreeLevel: "masters" },
+    { cgpa: 2.9, degreeLevel: "masters" },
+    { minCgpa: 3.0, degreeLevel: "bachelors" },
     NOW
   );
   assert.equal(result.state, MatchState.EXCLUDED);
@@ -144,4 +205,12 @@ test("is a pure function: identical inputs always produce identical output", () 
   const a = evaluateHardRules(profile, requirements, NOW);
   const b = evaluateHardRules(profile, requirements, NOW);
   assert.deepEqual(a, b);
+});
+
+test("a deadline is still open for the whole of its day", () => {
+  const deadlineDay = new Date(2026, 5, 10); // local midnight, as a date-only input would be read
+  const lateThatDay = new Date(2026, 5, 10, 22, 0);
+  const nextDay = new Date(2026, 5, 11, 0, 30);
+  assert.equal(evaluateHardRules({}, { deadline: deadlineDay }, lateThatDay).state, MatchState.ELIGIBLE);
+  assert.equal(evaluateHardRules({}, { deadline: deadlineDay }, nextDay).state, MatchState.EXCLUDED);
 });

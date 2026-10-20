@@ -16,7 +16,9 @@ import { escapeRegex } from "../services/escapeRegex.js";
 const EXPLAIN_TOP_N = 10;
 
 // §6.1: "the matched feed is the primary view, plain browse is secondary."
-// Excluded listings are dropped entirely — eligible sorts before near_miss.
+// Excluded listings are dropped entirely; eligible sorts first, then
+// near-miss (actionable), then ones the profile can't check yet.
+const STATE_ORDER = { [MatchState.ELIGIBLE]: 0, [MatchState.NEAR_MISS]: 1, [MatchState.UNVERIFIED]: 2 };
 export const getMatchedScholarships = async (req, res) => {
   try {
     const profile = buildStudentMatchProfile(req.user);
@@ -37,11 +39,13 @@ export const getMatchedScholarships = async (req, res) => {
         return { listing, ...evaluateHardRules(profile, requirements) };
       })
       .filter((m) => m.state !== MatchState.EXCLUDED)
-      .sort((a, b) => (a.state === b.state ? 0 : a.state === MatchState.ELIGIBLE ? -1 : 1));
+      .sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state]);
 
     await Promise.all(
       matched.slice(0, EXPLAIN_TOP_N).map(async (m) => {
-        m.explanation = await getOrCreateExplanation(req.models, profile, m.listing, m.state, m.gaps);
+        m.explanation = await getOrCreateExplanation(req.models, profile, m.listing, m.state, m.gaps, {
+          unverified: m.unverified,
+        });
       })
     );
 
@@ -54,8 +58,10 @@ export const getMatchedScholarships = async (req, res) => {
 
 export const listScholarships = async (req, res) => {
   try {
-    const { country, fundingType, degreeLevel, search, limit = 25, offset = 0 } = req.query;
+    const { country, fundingType, degreeLevel, scope, search, limit = 25, offset = 0 } = req.query;
     const filter = { listingType: "scholarship", status: "approved" };
+    // "internal" = the university's own awards and concessions.
+    if (scope === "internal" || scope === "external") filter.scope = scope;
     if (country) filter.country = country;
     if (fundingType) filter.fundingType = fundingType;
     if (degreeLevel) filter.degreeLevel = degreeLevel;

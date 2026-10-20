@@ -23,6 +23,7 @@ import {
   AlertCircle,
   Calendar,
   GraduationCap,
+  Bookmark,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import moment from "moment";
@@ -418,6 +419,7 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
           {tenantBranding?.enabledFeatures?.events !== false && (
             <NavItem pathname={location.pathname} to="/events" icon={<Calendar className="w-4 h-4" />} label="Events" />
           )}
+          <NavItem pathname={location.pathname} to="/saved" icon={<Bookmark className="w-4 h-4" />} label="Saved & applications" />
         </div>
 
         {/* Footer: theme + logout */}

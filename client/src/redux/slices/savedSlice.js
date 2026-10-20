@@ -5,7 +5,8 @@ const authHeader = (getState) => ({ headers: { Authorization: getState().auth.to
 const errorMessage = (error, fallback) => error.response?.data?.message || fallback;
 
 // Rev 5 §4.5/§10 — saved scholarships/jobs, the foundation for deadline
-// reminders and saved-item-change alerts (server/models/SavedListing.js).
+// reminders and saved-item-change alerts, and the student's application
+// tracker (status, notes, documents ready — server/models/SavedListing.js).
 
 export const fetchSaved = createAsyncThunk(
   "saved/fetch",
@@ -27,6 +28,19 @@ export const saveListing = createAsyncThunk(
       return { ...data, listingId };
     } catch (error) {
       return { success: false, message: errorMessage(error, "Failed to save listing") };
+    }
+  }
+);
+
+// PATCH /api/saved/:listingId — { status?, notes?, documentsReady? }
+export const updateSaved = createAsyncThunk(
+  "saved/update",
+  async ({ listingId, ...changes }, { getState }) => {
+    try {
+      const { data } = await axios.patch(`/api/saved/${listingId}`, changes, authHeader(getState));
+      return { ...data, listingId };
+    } catch (error) {
+      return { success: false, message: errorMessage(error, "Failed to update") };
     }
   }
 );
@@ -61,6 +75,19 @@ const savedSlice = createSlice({
       .addCase(saveListing.fulfilled, (state, action) => {
         if (action.payload.success && !state.savedIds.includes(action.payload.listingId)) {
           state.savedIds.push(action.payload.listingId);
+        }
+      })
+      .addCase(updateSaved.fulfilled, (state, action) => {
+        if (!action.payload.success) return;
+        const { listingId, saved } = action.payload;
+        if (!state.savedIds.includes(listingId)) state.savedIds.push(listingId);
+        const item = state.saved.find((s) => s.listing._id === listingId);
+        if (item) {
+          item.status = saved.status;
+          item.statusUpdatedAt = saved.statusUpdatedAt;
+          item.appliedAt = saved.appliedAt;
+          item.notes = saved.notes;
+          item.documentsReady = saved.documentsReady;
         }
       })
       .addCase(unsaveListing.fulfilled, (state, action) => {

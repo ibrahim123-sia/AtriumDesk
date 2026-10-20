@@ -33,16 +33,17 @@ const AUTO_PAUSE_THRESHOLD = 3;
  * @returns {{ listing: object|null, changed: boolean, merged: boolean }}
  */
 export async function applyScrapeResult(models, { type, hash, data, sourceId = null, tenantSlug = null, sourceUrl = null }) {
-  // §6.5: "a subsequent scrape that finds the listing again simply restores
-  // it to approved" — restore the existing delisted record (updating its
-  // fields if content changed) rather than creating a duplicate.
-  const delisted = sourceId
-    ? await models.Listing.findOne({ sourceId, listingType: type, status: "delisted" })
+  // The listing this source already produced (not a revision, not one an
+  // admin rejected) — a re-scrape updates that one, never a lookalike.
+  const current = sourceId
+    ? await models.Listing.findOne({ sourceId, listingType: type, revisionOf: null, status: { $ne: "rejected" } }).sort({
+        createdAt: -1,
+      })
     : null;
 
   if (sourceId) {
     const source = await models.Source.findById(sourceId);
-    if (source && source.lastHash === hash && !delisted) {
+    if (source && source.lastHash === hash && current?.status !== "delisted") {
       // Nothing changed since the last successful run — still a success,
       // just no new pending listing.
       source.lastRun = new Date();
@@ -57,12 +58,37 @@ export async function applyScrapeResult(models, { type, hash, data, sourceId = n
 
   let listing;
   let merged = false;
-  if (delisted) {
-    const before = delisted.toObject();
-    Object.assign(delisted, data, { status: "approved", approvedAt: new Date(), contentHash: hash });
-    await delisted.save();
-    listing = delisted;
-    await notifySavedItemChange(models, tenantSlug, delisted, before);
+  if (current) {
+    // §6.5: "a subsequent scrape that finds the listing again simply
+    // restores it" — it's back, with its last reviewed details.
+    if (current.status === "delisted") {
+      current.status = "approved";
+      await current.save();
+      await embedListingAsync(tenantSlug, current);
+    }
+    if (current.contentHash === hash) {
+      listing = current;
+    } else if (current.status === "pending") {
+      // Not reviewed yet: just refresh what the admin will see.
+      Object.assign(current, data, { contentHash: hash, lastVerifiedAt: new Date() });
+      await current.save();
+      listing = current;
+    } else {
+      // Live (approved or expired): propose the change for review rather
+      // than publish an unreviewed extraction (§7.3: "never push unvalidated
+      // data live"). One open revision per listing — a newer scrape
+      // replaces an unreviewed older one.
+      await models.Listing.deleteMany({ revisionOf: current._id, status: "pending" });
+      const Model = models[TYPE_MODEL_KEY[type]];
+      listing = await Model.create({
+        ...data,
+        source: "scraped",
+        sourceId,
+        status: "pending",
+        contentHash: hash,
+        revisionOf: current._id,
+      });
+    }
   } else {
     // §8 Layer 2 ingestion-time dedup: "When a new scraped listing is about
     // to be stored, check its embedding against existing approved listings
@@ -72,12 +98,17 @@ export async function applyScrapeResult(models, { type, hash, data, sourceId = n
     if (duplicate) {
       const existing = await models.Listing.findById(duplicate.listingId);
       if (existing) {
-        existing.mergedFrom.push({
+        const entry = {
           sourceId: sourceId || null,
           url: sourceUrl || data.officialLink || "",
           similarityScore: duplicate.score,
           data,
-        });
+        };
+        // A recurring source merged here before: refresh its entry rather
+        // than add another one on every change.
+        const prior = sourceId ? existing.mergedFrom.find((m) => String(m.sourceId) === String(sourceId)) : null;
+        if (prior) Object.assign(prior, entry, { mergedAt: new Date() });
+        else existing.mergedFrom.push(entry);
         await existing.save();
         listing = existing;
         merged = true;
@@ -109,19 +140,15 @@ export async function applyScrapeResult(models, { type, hash, data, sourceId = n
   return { listing, changed: true, merged };
 }
 
-// §4.5/§10 — "a saved scholarship or job whose details changed." The only
-// place in the current re-scrape architecture that genuinely edits an
-// existing (possibly-saved) approved listing in place, rather than creating
-// a new pending record (see this file's own header on Node-owns-state) —
-// every other content change from a re-scrape becomes a new pending listing
-// or a Layer-2 merge, neither of which is "the thing you saved just
-// changed." Compares only the fields a student would actually care about.
-const WATCHED_FIELDS = [
+// §4.5/§10 — "a saved scholarship or job whose details changed." Called when
+// a live listing's details change: an approved revision from a re-scrape,
+// or an admin edit. Compares only the fields a student would care about.
+export const WATCHED_FIELDS = [
   "deadline", "cgpaRequirement", "ieltsRequirement", "toeflRequirement",
   "fundingType", "workMode", "location", "date",
 ];
 
-async function notifySavedItemChange(models, tenantSlug, listing, before) {
+export async function notifySavedItemChange(models, tenantSlug, listing, before) {
   const changes = WATCHED_FIELDS
     .filter((field) => field in listing.toObject())
     .map((field) => ({ field, from: before[field], to: listing[field] }))
@@ -246,24 +273,51 @@ export async function unmergeListing(models, listingId, mergeEntryId) {
 // 404/410) result, never a generic failure. Requires two consecutive
 // confirmations before marking delisted, per the spec's own guard against
 // false positives from transient rendering blips.
-export async function recordListingGone(models, sourceId) {
+export async function recordListingGone(models, sourceId, tenantSlug = null) {
   // Atomic $inc, not read-then-write — this is called from a Python
   // webhook per scrape attempt, and two reports racing (retry, overlapping
   // cron tick) used to both read the same starting count and lose one
   // increment, delaying delisting detection past the intended 2-confirmation
-  // threshold.
+  // threshold. lastRun records the attempt, so the source waits a full
+  // cycle before the confirming check (and isn't due again every poll).
   const source = await models.Source.findByIdAndUpdate(
     sourceId,
-    { $inc: { notFoundCount: 1 } },
+    { $inc: { notFoundCount: 1 }, $set: { lastRun: new Date() } },
     { new: true }
   );
   if (!source) return;
   if (source.notFoundCount >= 2) {
-    await models.Listing.updateMany(
-      { sourceId, status: { $in: ["approved", "pending"] } },
-      { $set: { status: "delisted" } }
-    );
+    const gone = await models.Listing.find({ sourceId, status: { $in: ["approved", "pending"] } }).select("_id title listingType");
+    if (!gone.length) return;
+    await models.Listing.updateMany({ _id: { $in: gone.map((l) => l._id) } }, { $set: { status: "delisted" } });
+    await Promise.all(gone.map((l) => removeListingEmbedding(tenantSlug, l._id)));
+    await notifySaversListingClosed(models, tenantSlug, gone, "was removed from its source");
   }
+}
+
+// §6.5: "Saved item expires or is delisted -> one notification ('this
+// closed'), the item stays in their saved list with a badge." In-app only,
+// and only for savers who hadn't applied yet.
+export async function notifySaversListingClosed(models, tenantSlug, listings, why) {
+  if (!listings.length) return;
+  const byId = new Map(listings.map((l) => [String(l._id), l]));
+  const savers = await models.SavedListing.find({
+    listingId: { $in: listings.map((l) => l._id) },
+    status: { $in: [null, "saved", "preparing"] },
+  });
+  if (!savers.length) return;
+  await models.Notification.insertMany(
+    savers.map((s) => {
+      const listing = byId.get(String(s.listingId));
+      const path = listing.listingType === "job" ? "jobs" : listing.listingType === "event" ? "events" : "scholarships";
+      return {
+        userId: s.userId,
+        type: "listing_saved_change",
+        message: `"${listing.title}" ${why}`,
+        link: `/${path}/${listing._id}`,
+      };
+    })
+  ).catch((error) => console.error("notifySaversListingClosed failed:", error.message));
 }
 
 /**
@@ -310,9 +364,11 @@ export async function recordScrapeFailure(models, sourceId) {
   // failure reports for the same source used to both read the same
   // starting count and lose one increment, delaying (or masking) the
   // auto-pause threshold.
+  // lastRun records the attempt too: a failing source retries next cycle,
+  // not at every poll (which also auto-paused it within the hour).
   const source = await models.Source.findByIdAndUpdate(
     sourceId,
-    { $inc: { consecutiveFailures: 1 } },
+    { $inc: { consecutiveFailures: 1 }, $set: { lastRun: new Date() } },
     { new: true }
   );
   if (!source) return;

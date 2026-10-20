@@ -1,15 +1,25 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Sparkles, AlertTriangle, Bookmark, Link2 } from "lucide-react";
+import { Sparkles, AlertTriangle, Bookmark, Link2, HelpCircle } from "lucide-react";
 import moment from "moment";
+
+const GAP_LABELS = { cgpa: "CGPA", ieltsScore: "IELTS", toeflScore: "TOEFL" };
 
 /**
  * Rev 5 §8 — one card shape shared by the Scholarships and Jobs matched
- * feeds: eligible/near-miss badge, gap details for a near-miss, and the
- * Layer 3 LLM explanation when the server computed one (top ~10 only).
+ * feeds: eligible / near-miss / check-eligibility badge, gap details for a
+ * near-miss, and the Layer 3 explanation when the server computed one
+ * (top ~10 only). "Check eligibility" means a stated requirement can't be
+ * checked against the profile yet — never shown as eligible.
  */
 const MatchedListingCard = ({ to, title, subtitle, description, deadline, tag, state, gaps, skillGaps, explanation, C, isSaved, onToggleSave, sourceCount }) => {
   const isNearMiss = state === "near_miss";
+  const isUnverified = state === "unverified";
+  const badge = isNearMiss
+    ? { label: "Near miss", Icon: AlertTriangle, style: { backgroundColor: `${C.amber}22`, color: C.amber } }
+    : isUnverified
+      ? { label: "Check eligibility", Icon: HelpCircle, style: { backgroundColor: `${C.navy}15`, color: C.navy } }
+      : { label: "Eligible", Icon: Sparkles, style: { backgroundColor: `${C.green}22`, color: C.green } };
   return (
     <Link
       to={to}
@@ -21,6 +31,8 @@ const MatchedListingCard = ({ to, title, subtitle, description, deadline, tag, s
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleSave(); }}
           className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
           title={isSaved ? "Unsave" : "Save for later"}
+          aria-label={isSaved ? `Unsave ${title}` : `Save ${title} for later`}
+          aria-pressed={Boolean(isSaved)}
         >
           <Bookmark className="w-4 h-4" style={{ color: isSaved ? C.navy : C.muted }} fill={isSaved ? C.navy : "none"} />
         </button>
@@ -29,10 +41,10 @@ const MatchedListingCard = ({ to, title, subtitle, description, deadline, tag, s
         <h3 className="font-semibold text-base" style={{ color: C.text }}>{title}</h3>
         <span
           className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0 inline-flex items-center gap-1"
-          style={isNearMiss ? { backgroundColor: `${C.amber}22`, color: C.amber } : { backgroundColor: `${C.green}22`, color: C.green }}
+          style={badge.style}
         >
-          {isNearMiss ? <AlertTriangle className="w-3 h-3" /> : <Sparkles className="w-3 h-3" />}
-          {isNearMiss ? "Near miss" : "Eligible"}
+          <badge.Icon className="w-3 h-3" />
+          {badge.label}
         </span>
       </div>
       <p className="text-xs" style={{ color: C.muted }}>{subtitle}</p>
@@ -49,7 +61,7 @@ const MatchedListingCard = ({ to, title, subtitle, description, deadline, tag, s
         <div className="text-xs rounded-lg px-2.5 py-1.5" style={{ backgroundColor: `${C.amber}15`, color: C.amber }}>
           {gaps.map((g) => (
             <div key={g.field}>
-              {g.field}: {g.actual} (needs {g.required}, short by {g.shortBy})
+              {GAP_LABELS[g.field] || g.field}: yours is {g.actual}, needs {g.required} (short by {g.shortBy})
             </div>
           ))}
         </div>
@@ -58,7 +70,7 @@ const MatchedListingCard = ({ to, title, subtitle, description, deadline, tag, s
       {/* Rev 5 §6.3 — skill gap analysis, informational only (never affects state) */}
       {skillGaps?.length > 0 && (
         <div className="text-xs rounded-lg px-2.5 py-1.5" style={{ backgroundColor: `${C.amber}15`, color: C.amber }}>
-          Missing skills: {skillGaps.join(", ")}
+          Not on your profile yet: {skillGaps.join(", ")}
         </div>
       )}
 
