@@ -20,36 +20,39 @@ AtriumDesk is a full-stack AI-powered platform that consolidates university stud
 ### 🎓 Student Portal
 | Module | Status | Description |
 |--------|--------|-------------|
-| **Guest Page** | ✅ | Public landing page showcasing portal features before login |
+| **Guest Page** | ✅ | Public admissions assistant for applicants: chat, the university's own scholarships and campus events. Each university has its own link (`/?u=<id>`) and a one-tag **website widget** (`/widget.js`) |
 | **Auth** | ✅ | Register / login with a university email, OTP verification, password recovery |
-| **AI Chatbot** | ✅ | Answers university queries via RAG over the tenant's own website; voice input support; profanity filter with admin flagging |
-| **Issue Tracker** | ✅ | Submit and track support requests with attachments; 20s polling sync with department staff; in-app bell + email notifications |
+| **AI Chatbot** | ✅ | Answers university queries via RAG over the tenant's own website; source links under confident answers; 👍/👎 on every answer (a 👎 lands in the failed-question log); one-click "file a query" handoff with the transcript; voice input; profanity filter with admin flagging |
+| **Issue Tracker** | ✅ | Submit and track support requests with attachments; the form offers an existing answer before you file; replying to a resolved issue reopens it; rejection reasons shown; resolved issues auto-close after 7 days; in-app bell + email notifications |
 | **Job Portal** | ✅ | Scraped + manually-entered listings, hard-rule + embedding-based matching, skill-gap analysis against an uploaded CV |
 | **Scholarship Portal** | ✅ | Scraped + manually-entered listings, CGPA-aware matching, cached LLM match explanations |
-| **Events** | ✅ | Manual-entry campus events (no scrapable source exists) with save/reminder support |
-| **Profile Page** | ✅ | Unified academic/career/study-abroad/events profile, auto-filled from CV parsing or a tenant's student-email pattern |
+| **Events** | ✅ | Manual-entry campus events (no scrapable source exists) with save/reminder support, calendar (.ics / Google) and WhatsApp sharing |
+| **Saved & Applications** | ✅ | Saved scholarships/jobs/events with an application tracker (preparing → applied → interviewing → offer), notes, documents checklist, deadline reminders |
+| **Profile Page** | ✅ | Unified academic/career/study-abroad/events profile, auto-filled from CV parsing or a tenant's student-email pattern; digest settings; download my data / delete my account |
 
 ### 🏢 Staff Portal (Department-scoped)
 | Module | Status | Description |
 |--------|--------|-------------|
 | **Dashboard** | ✅ | Open / In Progress / Resolved-this-week cards, 7-day trend chart, avg first-response time, recent issues, your own reply count |
-| **Department Inbox** | ✅ | Only your department's issues; filter by status with live counts; 20s polling |
-| **Issue Detail** | ✅ | Full thread with student info, attachments, all replies |
+| **Department Inbox** | ✅ | Only your department's issues; per-status counts, escalated-only and assigned-to-me filters; 20s polling |
+| **Issue Detail** | ✅ | Full thread with student info and attachments; assign/reassign; **internal notes** only staff see; **transfer** to the right department; department **saved replies** |
 | **Status Management** | ✅ | Update status (Pending → In Progress → Resolved → Closed); student notified by bell + email |
 | **Reply System** | ✅ | Threaded replies to students; notification fires on every reply |
 
 ### ⚙️ Admin Panel
 | Module | Status | Description |
 |--------|--------|-------------|
-| **Dashboard** | ✅ | Stat cards (students/staff/admins/departments/issues/chats/flagged) + 7-day issue trend + recent signups |
+| **Dashboard** | ✅ | Stat cards (students/staff/admins/departments/issues/chats/flagged) + 7-day issue trend + recent signups + **assistant card** (questions answered, confident share, helpful rate, chat-to-ticket handoffs, answers given on the issue form, most-asked gaps) |
 | **Users** | ✅ | List students with search and filters (blocked / flagged); detail drawer with issues, chats, flags; block/unblock with confirm |
-| **Staff** | ✅ | Create staff with auto-generated `firstnamelastname@maju.<deptcode>.edu` + 12-char password (shown once + emailed); filter by department; deactivate |
-| **Departments** | ✅ | Create / edit inline / soft-deactivate; reactivate |
+| **Staff** | ✅ | Create staff with an auto-generated address on the university's staff email pattern + 12-char password (shown once + emailed); filter by department; deactivate |
+| **Departments** | ✅ | Create / edit / soft-deactivate; first-reply target (SLA hours) and who escalations go to |
+| **Failed Questions** | ✅ | Questions the bot couldn't answer well (low confidence or rated 👎), grouped with counts and the answer given — answer them straight into the knowledge base |
 | **Query** | ✅ | Cross-department issue analytics — top categories, by-department, avg resolution time, filterable table, read-only detail |
 | **Data (Vector DB)** | ✅ | Direct-to-Python CRUD on the chatbot knowledge base; edit/add chunks; upload PDF / DOCX / TXT with auto chunking + embedding |
 | **Logs & Activity** | ✅ | Three tabs: admin action audit (with redacted payload), login events (success + failures), chat browser with flagged-student filter |
 | **Content Management** | ✅ | Manage scholarship/job/event sources, review scraped listings, self-service chatbot knowledge-base website scraping |
 | **System Health** | ✅ | One-screen manual health check pinging MongoDB, ChromaDB, and the active LLM provider — meant to be run right before a demo/exam |
+| **Settings** | ✅ | Branding (name, logo, colour), email domains and patterns, OTP email account, retrieval tuning, plus the guest link and website-widget snippet to share |
 
 ### 🧑‍✈️ Super Admin (Platform)
 | Module | Status | Description |
@@ -216,6 +219,22 @@ npm run build && npx wrangler deploy
 ```
 
 Without Docker, use **Actions → Deploy to Cloudflare → Run workflow** (`.github/workflows/deploy-cloudflare.yml`) for steps 4 and 6 — it needs the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` and the repository variables `VITE_SERVER_URL` / `VITE_PYTHON_URL`. A new database is seeded from your machine against Atlas with `node scripts/seedTenant.js` (in `server/`). `npm run logs` (in `cloudflare/`) tails the Worker; the containers' logs are in the dashboard under Workers → `atriumdesk-api` → Containers.
+
+---
+
+## 💬 Website widget
+
+Add the admissions assistant to a university's own website with one tag
+(the exact snippet, with your address and university id, is in
+**Admin → Settings → Share your assistant**):
+
+```html
+<script src="https://<your AtriumDesk address>/widget.js" data-university="<university id>" async></script>
+```
+
+Optional `data-label="Ask us"` and `data-color="#0D9488"`. It adds a chat button
+that opens the guest assistant (`/embed`) in a panel. `/embed` is the only page
+other sites may frame (see `client/public/_headers`).
 
 ---
 
