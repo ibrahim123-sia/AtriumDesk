@@ -237,6 +237,19 @@ export const assignIssue = createAsyncThunk(
   }
 );
 
+// A first draft of a reply from the knowledge base (staff edit, then send).
+export const draftStaffReply = createAsyncThunk(
+  "issue/draftReply",
+  async (id, { getState }) => {
+    try {
+      const { data } = await axios.post(`/api/issue/department/${id}/draft-reply`, {}, authHeader(getState));
+      return data;
+    } catch (error) {
+      return { success: false, message: errorMessage(error, "Couldn't draft a reply right now") };
+    }
+  }
+);
+
 // Staff-only note on an issue (never shown to the student).
 export const addInternalNote = createAsyncThunk(
   "issue/addNote",

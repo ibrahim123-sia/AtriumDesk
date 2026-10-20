@@ -206,6 +206,9 @@ export const submitAnswerFeedback = async (req, res) => {
     if (!message || message.role !== "assistant") {
       return res.status(404).json({ success: false, message: "Answer not found" });
     }
+    // A wellbeing support reply isn't rated — rating would copy what the
+    // student wrote into the failed-question log admins read.
+    if (message.safety) return res.status(400).json({ success: false, message: "This reply can't be rated" });
     const alreadyRated = typeof message.feedback?.helpful === "boolean";
     const question = [...chat.messages.slice(0, index)].reverse().find((m) => m.role === "user")?.content || "";
 

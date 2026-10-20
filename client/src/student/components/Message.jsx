@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { User, Bot, Mail, Calendar, Image as ImageIcon, Volume2, Mic, MessageSquarePlus, ThumbsUp, ThumbsDown, Link2 } from 'lucide-react';
+import { User, Bot, Mail, Calendar, Image as ImageIcon, Volume2, Mic, MessageSquarePlus, ThumbsUp, ThumbsDown, Link2, HeartHandshake } from 'lucide-react';
 import Markdown from 'react-markdown';
 import moment from 'moment';
 import toast from 'react-hot-toast';
@@ -34,6 +34,14 @@ export const AnswerSources = ({ sources, color, linkColor }) =>
       })}
     </div>
   ) : null;
+
+// The fixed reply shown when someone may be in crisis — set apart from
+// ordinary answers, with the university's support contacts.
+export const WellbeingNote = ({ isDark }) => (
+  <p className="text-xs mb-2 inline-flex items-center gap-1.5 font-semibold" style={{ color: isDark ? '#F5B7A8' : '#A6362B' }}>
+    <HeartHandshake className="w-4 h-4" /> You're not alone — support is available
+  </p>
+);
 
 // Was this answer helpful? A thumbs-down flags the question for the team
 // (failed-question log) and opens the handoff.
@@ -182,8 +190,9 @@ const Message = ({ message, chatId, priorUserQuestion }) => {
   const helpful = message.feedback?.helpful;
   const muted = isDark ? '#8FB0AA' : '#53716C';
   const accent = isDark ? '#4E9128' : '#0D9488';
+  const isWellbeing = message.safety === 'wellbeing';
   const offerHandoff =
-    !isUser && chatId && priorUserQuestion &&
+    !isUser && !isWellbeing && chatId && priorUserQuestion &&
     (message.confidenceTier === 'low' || helpful === false || SUGGESTS_TICKET.test(message.content || ''));
 
   const rate = async (value) => {
@@ -220,6 +229,8 @@ const Message = ({ message, chatId, priorUserQuestion }) => {
             : isDark ? '#E8F5F2' : '#0F2E2A',
           border: isUser
             ? 'none'
+            : isWellbeing
+            ? `1px solid ${isDark ? '#7A3B30' : '#F1B5A8'}`
             : isDark ? '1px solid #1E3A35' : '1px solid #D9E7E4',
           boxShadow: !isUser && !isDark ? '0 1px 2px rgba(30, 46, 110, 0.04)' : 'none',
         }}
@@ -264,6 +275,8 @@ const Message = ({ message, chatId, priorUserQuestion }) => {
               <span>Response to your voice message</span>
             </div>
           )}
+
+          {isWellbeing && <WellbeingNote isDark={isDark} />}
 
           {/* Regular message content */}
           {message.isImage ? (
@@ -344,7 +357,7 @@ const Message = ({ message, chatId, priorUserQuestion }) => {
           }}
         >
           <span>{moment(message.timestamp).format('h:mm A')}</span>
-          {!isUser && message._id && chatId && (
+          {!isUser && !isWellbeing && message._id && chatId && (
             <AnswerFeedback value={helpful} onRate={rate} color={muted} activeColor={accent} />
           )}
         </div>

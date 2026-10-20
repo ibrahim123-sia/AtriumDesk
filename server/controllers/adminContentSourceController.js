@@ -51,6 +51,51 @@ export const getContentSourceStatus = async (req, res) => {
   res.json({ success: true, contentSource });
 };
 
+// Marks the run "running" and hands the crawl to the AI service. Shared by
+// the admin's "Scrape now" and the scheduled refresh (services/scheduler.js).
+export async function startContentScrape(tenant, { sitemapUrl, allowedDomain, baseUrl }) {
+  tenant.contentSource = {
+    sitemapUrl,
+    allowedDomain: String(allowedDomain).toLowerCase().trim(),
+    baseUrl,
+    status: "running",
+    startedAt: new Date(),
+    completedAt: null,
+    pagesScraped: 0,
+    chunksCreated: 0,
+    error: "",
+    refreshDays: tenant.contentSource?.refreshDays || 0,
+  };
+  await tenant.save();
+  invalidateTenantCache();
+
+  // Deliberately not awaited — Python's own /internal/scrape-site endpoint
+  // responds 202 immediately and does the real work as a background task,
+  // reporting back later. If Python is down or refuses the job, the run is
+  // marked failed right away instead of showing "running" forever.
+  fetch(`${PYTHON_BACKEND_URL}/internal/scrape-site`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-internal-secret": INTERNAL_SECRET || "" },
+    body: JSON.stringify({
+      tenant_slug: tenant.slug,
+      sitemap_url: sitemapUrl,
+      allowed_domain: tenant.contentSource.allowedDomain,
+      base_url: baseUrl,
+    }),
+    signal: AbortSignal.timeout(60000),
+  })
+    .then((response) => {
+      if (!response.ok) markScrapeFailed(tenant._id, `The AI service refused the scrape (HTTP ${response.status}).`);
+    })
+    .catch((error) => {
+      console.error("startContentScrape: failed to reach Python:", error.message);
+      markScrapeFailed(tenant._id, "Couldn't reach the AI service to start the scrape.");
+    });
+  return tenant.contentSource;
+}
+
+export const isScrapeRunning = (contentSource) => contentSource?.status === "running" && !isStaleRun(contentSource);
+
 export const triggerContentScrape = async (req, res) => {
   const { sitemapUrl, allowedDomain, baseUrl } = req.body || {};
   if (!sitemapUrl || !allowedDomain || !baseUrl) {
@@ -67,50 +112,37 @@ export const triggerContentScrape = async (req, res) => {
     const tenant = await Tenant.findById(req.tenant._id);
     if (!tenant) return res.status(404).json({ success: false, message: "Tenant not found" });
 
-    if (tenant.contentSource?.status === "running" && !isStaleRun(tenant.contentSource)) {
+    if (isScrapeRunning(tenant.contentSource)) {
       return res.status(409).json({ success: false, message: "A scrape is already running for this university" });
     }
 
-    tenant.contentSource = {
-      sitemapUrl,
-      allowedDomain: String(allowedDomain).toLowerCase().trim(),
-      baseUrl,
-      status: "running",
-      startedAt: new Date(),
-      completedAt: null,
-      pagesScraped: 0,
-      chunksCreated: 0,
-      error: "",
-    };
-    await tenant.save();
-    invalidateTenantCache();
-
-    // Deliberately not awaited — Python's own /internal/scrape-site endpoint
-    // responds 202 immediately and does the real work as a background task,
-    // reporting back later. If Python is down or refuses the job, the run is
-    // marked failed right away instead of showing "running" forever.
-    fetch(`${PYTHON_BACKEND_URL}/internal/scrape-site`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-internal-secret": INTERNAL_SECRET || "" },
-      body: JSON.stringify({
-        tenant_slug: tenant.slug,
-        sitemap_url: sitemapUrl,
-        allowed_domain: tenant.contentSource.allowedDomain,
-        base_url: baseUrl,
-      }),
-    })
-      .then((response) => {
-        if (!response.ok) markScrapeFailed(tenant._id, `The AI service refused the scrape (HTTP ${response.status}).`);
-      })
-      .catch((error) => {
-        console.error("triggerContentScrape: failed to reach Python:", error.message);
-        markScrapeFailed(tenant._id, "Couldn't reach the AI service to start the scrape.");
-      });
-
-    res.status(202).json({ success: true, contentSource: tenant.contentSource });
+    const contentSource = await startContentScrape(tenant, { sitemapUrl, allowedDomain, baseUrl });
+    res.status(202).json({ success: true, contentSource });
   } catch (error) {
     console.error("triggerContentScrape error:", error);
     res.status(500).json({ success: false, message: "Failed to start scrape" });
+  }
+};
+
+// PATCH /api/admin/content-source/schedule { refreshDays: 0 | 7 | 14 | 30 }
+export const setContentRefreshSchedule = async (req, res) => {
+  const refreshDays = Number(req.body?.refreshDays);
+  if (![0, 7, 14, 30].includes(refreshDays)) {
+    return res.status(400).json({ success: false, message: "refreshDays must be 0, 7, 14 or 30" });
+  }
+  try {
+    const tenant = await getTenantModel().findById(req.tenant._id);
+    if (!tenant) return res.status(404).json({ success: false, message: "Tenant not found" });
+    if (refreshDays && !tenant.contentSource?.sitemapUrl) {
+      return res.status(400).json({ success: false, message: "Run a scrape once first, so the schedule knows which site to refresh" });
+    }
+    tenant.contentSource.refreshDays = refreshDays;
+    await tenant.save();
+    invalidateTenantCache();
+    res.json({ success: true, contentSource: tenant.contentSource });
+  } catch (error) {
+    console.error("setContentRefreshSchedule error:", error);
+    res.status(500).json({ success: false, message: "Failed to save the schedule" });
   }
 };
 

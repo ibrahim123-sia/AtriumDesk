@@ -24,7 +24,7 @@ import {
   clearSelectedIssue,
 } from "../../redux/slices/issueSlice";
 import { getPalette } from "../../administrator/utils/palette";
-import { InternalNotes, TransferPanel, SavedReplyPicker } from "../components/IssueStaffTools";
+import { InternalNotes, TransferPanel, SavedReplyPicker, DraftReplyButton } from "../components/IssueStaffTools";
 import { DetailUnavailable } from "../../student/components/DetailStates";
 
 // What the last change was, for the "X just …" banner and the poll toast.
@@ -522,12 +522,15 @@ const StaffIssueDetail = () => {
             <label htmlFor="staff-reply" className="text-xs font-semibold uppercase" style={{ color: C.muted }}>
               Reply to the student
             </label>
-            <SavedReplyPicker
-              issue={issue}
-              reply={reply}
-              onInsert={(text) => setReply((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${text}` : text))}
-              C={C}
-            />
+            <div className="flex items-center gap-2">
+              <DraftReplyButton issue={issue} reply={reply} onDraft={setReply} C={C} />
+              <SavedReplyPicker
+                issue={issue}
+                reply={reply}
+                onInsert={(text) => setReply((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${text}` : text))}
+                C={C}
+              />
+            </div>
           </div>
           <textarea
             id="staff-reply"

@@ -26,7 +26,9 @@ const issues = await import("../controllers/issueController.js");
 const { submitAnswerFeedback } = await import("../controllers/chatController.js");
 const { exportMyData, deleteMyAccount } = await import("../controllers/accountDataController.js");
 const { guestTextChatController, clearGuestSession } = await import("../controllers/guestChatController.js");
-const { runAutoCloseResolvedIssues } = await import("../services/scheduler.js");
+const { runAutoCloseResolvedIssues, runKnowledgeBaseRefresh } = await import("../services/scheduler.js");
+const { textMessageController } = await import("../controllers/messageController.js");
+const { updateTenantSettings } = await import("../controllers/tenantSettingsController.js");
 
 const DB = "test_service_desk";
 const SLUG = "test-service-desk";
@@ -255,3 +257,66 @@ test("account deletion: students only, password required, issues kept without th
   assert.equal(kept.studentEmail, "deleted-account");
   assert.equal(kept.replies[0].authorName, "Deleted student");
 });
+
+test("someone who may be in crisis gets the support reply, not a model answer", async () => {
+  await getTenantModel().updateOne({ _id: tenantDoc._id }, { "branding.wellbeingMessage": "Counselling Centre, Room 12 — counselling@sdtest.invalid" });
+  const chat = await models.Chat.create({ userId: student._id, userName: student.name, name: "New Chat", messages: [] });
+  const t = { ...tenant, branding: { ...tenant.branding, wellbeingMessage: "Counselling Centre, Room 12 — counselling@sdtest.invalid" } };
+  const res = await call(textMessageController, { user: student, tenant: t, body: { chatId: String(chat._id), prompt: "I don't want to live anymore" } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.reply.safety, "wellbeing");
+  assert.match(res.body.reply.content, /Counselling Centre, Room 12/);
+  assert.equal(await models.FailedQuestion.countDocuments({ question: "I don't want to live anymore" }), 0);
+  assert.equal(await models.AiUsageLog.countDocuments({ userId: student._id, endpoint: "chat" }), 0, "no model call");
+  const rate = await call(submitAnswerFeedback, {
+    user: student,
+    params: { chatId: String(chat._id), messageId: String(res.body.reply._id) },
+    body: { helpful: false },
+  });
+  assert.equal(rate.statusCode, 400, "support replies can't be rated into the failed-question log");
+
+  const empty = await call(textMessageController, { user: student, body: { chatId: String(chat._id), prompt: "   " } });
+  assert.equal(empty.statusCode, 400);
+});
+
+test("a reply draft fails cleanly when the AI service is unavailable", async () => {
+  const issue = await fileIssue({ title: "Draft me" });
+  const res = await call(issues.draftStaffReply, { user: staffA, params: { id: String(issue._id) } });
+  assert.equal(res.statusCode, 502);
+  assert.match(res.body.message, /Couldn't draft a reply/);
+  const other = await call(issues.draftStaffReply, { user: staffB, params: { id: String(issue._id) } });
+  assert.equal(other.statusCode, 403);
+});
+
+test("working hours and the knowledge-base refresh are validated and scheduled", async () => {
+  const admin = { _id: new mongoose.Types.ObjectId(), role: "admin" };
+  const bad = await call(updateTenantSettings, { user: admin, tenant: { ...tenant, _id: tenantDoc._id }, body: { businessHours: { enabled: true, days: [1], startHour: 17, endHour: 9 } } });
+  assert.equal(bad.statusCode, 400);
+  const badZone = await call(updateTenantSettings, { user: admin, tenant: { ...tenant, _id: tenantDoc._id }, body: { businessHours: { enabled: true, timezone: "Mars/Base" } } });
+  assert.equal(badZone.statusCode, 400);
+  const ok = await call(updateTenantSettings, {
+    user: admin,
+    tenant: { ...tenant, _id: tenantDoc._id },
+    body: { businessHours: { enabled: true, days: [5, 1, 1, 2], startHour: 8, endHour: 16, timezone: "Asia/Karachi" } },
+  });
+  assert.equal(ok.statusCode, 200);
+  assert.deepEqual([...ok.body.tenant.businessHours.days], [1, 2, 5]);
+
+  // Due for a refresh: last run 8 days ago, weekly schedule. The AI service is
+  // down in tests, so the run is started and then marked failed.
+  await getTenantModel().updateOne(
+    { _id: tenantDoc._id },
+    { contentSource: { sitemapUrl: "https://sdtest.invalid/sitemap.xml", allowedDomain: "sdtest.invalid", baseUrl: "https://sdtest.invalid", status: "done", completedAt: new Date(Date.now() - 8 * 86400000), refreshDays: 7 } }
+  );
+  const started = await runKnowledgeBaseRefresh();
+  assert.ok(started >= 1);
+  const after = await getTenantModel().findById(tenantDoc._id);
+  assert.ok(["running", "failed"].includes(after.contentSource.status));
+  assert.equal(after.contentSource.refreshDays, 7, "the schedule survives the run");
+  // Not due again right away.
+  await getTenantModel().updateOne({ _id: tenantDoc._id }, { "contentSource.status": "done", "contentSource.completedAt": new Date() });
+  const again = await runKnowledgeBaseRefresh();
+  const mine = await getTenantModel().findById(tenantDoc._id);
+  assert.equal(mine.contentSource.status, "done", `not re-run (${again})`);
+});
+

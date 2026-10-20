@@ -28,6 +28,8 @@ import {
   answerSuggestionLimiter,
   getAnswerSuggestion,
   recordAnswerSuggestionHelped,
+  draftReplyLimiter,
+  draftStaffReply,
 } from "../controllers/issueController.js";
 
 const router = express.Router();
@@ -46,6 +48,7 @@ router.patch("/department/:id/assign", protect, requireRole("staff"), requireDep
 router.post("/department/:id/sfo-reply", protect, requireRole("staff"), requireDepartment, addStaffReply);
 router.post("/department/:id/notes", protect, requireRole("staff"), requireDepartment, addInternalNote);
 router.patch("/department/:id/transfer", protect, requireRole("staff"), requireDepartment, transferIssue);
+router.post("/department/:id/draft-reply", protect, requireRole("staff"), requireDepartment, draftReplyLimiter, draftStaffReply);
 
 router.post(
   "/",

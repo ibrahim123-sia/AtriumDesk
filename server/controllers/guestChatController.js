@@ -6,6 +6,7 @@ import { getModelsForTenant } from "../models/registry.js";
 import { resolveTenantBySlug, DEFAULT_TENANT_SLUG } from "../services/tenantRegistry.js";
 import { startOfToday } from "../services/dates.js";
 import { escapeRegex } from "../services/escapeRegex.js";
+import { mentionsSelfHarm, wellbeingReply } from "../services/wellbeing.js";
 
 // Python FastAPI backend URL — RAG lives here
 const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://localhost:8000";
@@ -150,7 +151,7 @@ async function getPythonBackendResponse(question, context = {}) {
       }),
       // node-fetch v3 ignores a `timeout` option; this is what stops a stuck
       // AI service from holding the request open forever.
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(120000),
     });
 
     if (!response.ok) {
@@ -369,8 +370,14 @@ export const guestTextChatController = async (req, res) => {
     // no prior turn in this session (a follow-up's answer is context-
     // dependent, so it's never served from the flat question-text cache).
     let botReply, confidenceTier, sources = [];
-    const cached = history.length === 0 ? getCachedGuestAnswer(tenantSlug, message) : null;
-    if (cached) {
+    // Someone who may be in crisis gets the fixed support reply, never a
+    // cached or model answer (services/wellbeing.js).
+    const safety = mentionsSelfHarm(message) ? "wellbeing" : undefined;
+    const cached = !safety && history.length === 0 ? getCachedGuestAnswer(tenantSlug, message) : null;
+    if (safety) {
+      botReply = wellbeingReply(guestTenant.branding);
+      confidenceTier = null;
+    } else if (cached) {
       botReply = cached.answer;
       confidenceTier = cached.confidenceTier;
       sources = cached.sources || [];
@@ -392,8 +399,8 @@ export const guestTextChatController = async (req, res) => {
         botReply = "Sorry, I'm unable to connect to the university knowledge base at the moment. Please try again later.";
       }
     }
-    logIfFailedQuestion(tenantSlug, { question: message, confidenceTier });
-    const followUpChips = await buildFollowUpChips(tenantSlug, message);
+    if (!safety) logIfFailedQuestion(tenantSlug, { question: message, confidenceTier });
+    const followUpChips = safety ? [] : await buildFollowUpChips(tenantSlug, message);
 
     // Add bot response to session
     session.messages.push({
@@ -402,6 +409,7 @@ export const guestTextChatController = async (req, res) => {
       content: botReply,
       confidenceTier,
       sources,
+      safety,
       timestamp: Date.now(),
     });
     // Its position in the session: what answer feedback points at.
@@ -419,6 +427,7 @@ export const guestTextChatController = async (req, res) => {
         content: botReply,
         confidenceTier,
         sources,
+        safety,
         answerIndex,
         timestamp: Date.now(),
       },
@@ -587,6 +596,7 @@ export const guestAnswerFeedback = async (req, res) => {
   if (!answer || answer.role !== "assistant") {
     return res.status(404).json({ success: false, message: "Answer not found" });
   }
+  if (answer.safety) return res.status(400).json({ success: false, message: "This reply can't be rated" });
   try {
     // The session knows which university it's on.
     const guestTenant = await resolveActiveGuestTenant(session.tenantSlug || tenant);

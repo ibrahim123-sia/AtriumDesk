@@ -561,6 +561,37 @@ def explain_match_endpoint(request: ExplainMatchRequest):
     return {"explanation": explanation}
 
 
+class ReplyDraftRequest(BaseModel):
+    tenant_slug: str
+    title: str
+    description: str = ""
+    thread: list = []
+    university_name: Optional[str] = None
+    department_name: Optional[str] = None
+    staff_name: Optional[str] = None
+    student_name: Optional[str] = None
+
+
+@app.post("/issues/draft-reply", dependencies=[Depends(verify_internal_secret)])
+def draft_reply_endpoint(request: ReplyDraftRequest):
+    # Sync on purpose: a blocking LLM call, run in Starlette's threadpool.
+    import reply_draft
+
+    try:
+        return reply_draft.draft_reply(
+            request.tenant_slug,
+            request.university_name,
+            request.department_name,
+            request.staff_name,
+            request.student_name,
+            request.title,
+            request.description,
+            request.thread,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Reply draft failed: {exc}")
+
+
 # =============================================================
 # /TRANSCRIBE — Local speech-to-text (replaces AssemblyAI)
 # =============================================================

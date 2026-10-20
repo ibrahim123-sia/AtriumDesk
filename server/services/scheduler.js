@@ -25,8 +25,10 @@ import { evaluateHardRules, MatchState } from "./matching.js";
 import { buildStudentMatchProfile } from "./studentMatchProfile.js";
 import { findDueSources } from "./dueSources.js";
 import { startOfToday } from "./dates.js";
+import { businessHoursBetween } from "./businessHours.js";
 import { removeListingEmbedding, notifySaversListingClosed } from "../controllers/adminSourceController.js";
 import { OPEN_APPLICATION_STATUSES } from "../models/SavedListing.js";
+import { startContentScrape, isScrapeRunning } from "../controllers/adminContentSourceController.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -49,8 +51,10 @@ export const DEFAULT_SLA_HOURS = 48;
  * `now`? Callers are still responsible for the escalated/firstStaffReplyAt/
  * status filtering; this only answers the age-vs-threshold question.
  */
-export function isSlaBreached(createdAt, thresholdHours, now = new Date()) {
+export function isSlaBreached(createdAt, thresholdHours, now = new Date(), businessHours = null) {
   const hours = thresholdHours || DEFAULT_SLA_HOURS;
+  // A university can count the SLA in working hours only (Settings).
+  if (businessHours?.enabled) return businessHoursBetween(createdAt, now, businessHours) >= hours;
   const ageMs = now.getTime() - createdAt.getTime();
   return ageMs >= hours * 60 * 60 * 1000;
 }
@@ -89,7 +93,7 @@ export async function runSlaEscalationCheck() {
 
     const breached = candidates.filter((issue) => {
       const dept = deptById.get(issue.department._id.toString());
-      return isSlaBreached(issue.createdAt, dept?.slaThresholdHours);
+      return isSlaBreached(issue.createdAt, dept?.slaThresholdHours, new Date(), tenant.businessHours);
     });
 
     // Tenant-wide, issue-independent — fetched once, not per breached issue.
@@ -407,6 +411,31 @@ export async function runAutoCloseResolvedIssues(now = new Date()) {
   return closed;
 }
 
+/**
+ * Re-scrapes each university's website when its chosen refresh interval
+ * (Data page: weekly / fortnightly / monthly) has passed since the last run,
+ * so the chatbot keeps up with new pages. Returns how many were started.
+ */
+export async function runKnowledgeBaseRefresh(now = new Date()) {
+  const Tenant = getPlatformTenantModel();
+  const due = await Tenant.find({ status: "active", "contentSource.refreshDays": { $gt: 0 }, "contentSource.sitemapUrl": { $nin: [null, ""] } });
+  let started = 0;
+  for (const tenant of due) {
+    const cs = tenant.contentSource;
+    const last = cs.completedAt || cs.startedAt;
+    if (isScrapeRunning(cs)) continue;
+    if (last && now.getTime() - new Date(last).getTime() < cs.refreshDays * DAY_MS) continue;
+    try {
+      await startContentScrape(tenant, { sitemapUrl: cs.sitemapUrl, allowedDomain: cs.allowedDomain, baseUrl: cs.baseUrl });
+      started += 1;
+    } catch (error) {
+      console.error(`Knowledge-base refresh failed to start for "${tenant.slug}":`, error.message);
+    }
+  }
+  if (started) console.log(`Knowledge-base refresh: started for ${started} universit${started === 1 ? "y" : "ies"}`);
+  return started;
+}
+
 // Hour of day (server local time — set TZ) each daily job runs at. Shared by
 // startScheduler()'s cron expressions and runScheduledJobs(), so in-process
 // cron and an external hourly trigger run them at the same time. Order
@@ -417,6 +446,7 @@ export const DAILY_JOB_HOURS = {
   deadlineReminders: 2,
   expiredListings: 3,
   autoCloseIssues: 4,
+  kbRefresh: 5,
   digests: 6,
 };
 
@@ -425,6 +455,7 @@ const DAILY_JOBS = {
   deadlineReminders: () => runDeadlineReminderCheck(),
   expiredListings: () => runExpiredListingsCheck(),
   autoCloseIssues: () => runAutoCloseResolvedIssues(),
+  kbRefresh: () => runKnowledgeBaseRefresh(),
   digests: () => runDigestCheck(),
 };
 
@@ -509,6 +540,12 @@ export function startScheduler() {
   cron.schedule(`0 ${DAILY_JOB_HOURS.autoCloseIssues} * * *`, () => {
     runAutoCloseResolvedIssues().catch((error) => {
       console.error("runAutoCloseResolvedIssues failed:", error);
+    });
+  });
+
+  cron.schedule(`0 ${DAILY_JOB_HOURS.kbRefresh} * * *`, () => {
+    runKnowledgeBaseRefresh().catch((error) => {
+      console.error("runKnowledgeBaseRefresh failed:", error);
     });
   });
 

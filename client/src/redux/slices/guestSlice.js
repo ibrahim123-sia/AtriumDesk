@@ -216,6 +216,7 @@ const guestSlice = createSlice({
             type: "text",
             sources: action.payload.reply.sources || [],
             answerIndex: action.payload.reply.answerIndex,
+            safety: action.payload.reply.safety,
             feedback: undefined,
           },
         ];

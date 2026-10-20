@@ -36,6 +36,12 @@ const emptyForm = {
   supportEmail: "",
   guestStarterQuestions: "",
   studentStarterQuestions: "",
+  wellbeingMessage: "",
+  hoursEnabled: false,
+  hoursDays: [1, 2, 3, 4, 5],
+  hoursStart: 9,
+  hoursEnd: 17,
+  hoursTimezone: "Asia/Karachi",
   emailDomains: "",
   staffEmailDomainPattern: "",
   studentEmailPattern: "",
@@ -72,6 +78,12 @@ const Settings = () => {
       logoUrl: settings.branding?.logoUrl || "",
       primaryColor: settings.branding?.primaryColor || "",
       supportEmail: settings.branding?.supportEmail || "",
+      wellbeingMessage: settings.branding?.wellbeingMessage || "",
+      hoursEnabled: !!settings.businessHours?.enabled,
+      hoursDays: settings.businessHours?.days?.length ? settings.businessHours.days : [1, 2, 3, 4, 5],
+      hoursStart: settings.businessHours?.startHour ?? 9,
+      hoursEnd: settings.businessHours?.endHour ?? 17,
+      hoursTimezone: settings.businessHours?.timezone || "Asia/Karachi",
       guestStarterQuestions: (settings.branding?.guestStarterQuestions || []).join("\n"),
       studentStarterQuestions: (settings.branding?.studentStarterQuestions || []).join("\n"),
       emailDomains: (settings.emailDomains || []).join(", "),
@@ -104,6 +116,7 @@ const Settings = () => {
         primaryColor: form.primaryColor,
         supportEmail: form.supportEmail,
         // One question per line; empty = the default set.
+        wellbeingMessage: form.wellbeingMessage,
         guestStarterQuestions: form.guestStarterQuestions,
         studentStarterQuestions: form.studentStarterQuestions,
       },
@@ -130,6 +143,13 @@ const Settings = () => {
       },
       feeConfig: {
         feePerCreditHour: form.feePerCreditHour === "" ? null : form.feePerCreditHour,
+      },
+      businessHours: {
+        enabled: form.hoursEnabled,
+        days: form.hoursDays,
+        startHour: Number(form.hoursStart),
+        endHour: Number(form.hoursEnd),
+        timezone: form.hoursTimezone,
       },
     };
     const result = await dispatch(updateTenantSettings(body)).unwrap();
@@ -223,6 +243,104 @@ const Settings = () => {
             value={form.supportEmail}
             onChange={handleChange("supportEmail")}
             placeholder="support@youruniversity.edu"
+            className={inputClass}
+            style={inputStyle}
+          />
+        </Field>
+
+        <Field
+          C={C}
+          label="Working hours for response targets"
+          hint="When on, departments' first-reply targets (Departments page) count only these hours — an issue filed on Friday evening isn't overdue by Monday morning."
+        >
+          <div className="space-y-2">
+            <label className="inline-flex items-center gap-2 text-sm" style={{ color: C.text }}>
+              <input
+                type="checkbox"
+                checked={form.hoursEnabled}
+                onChange={(e) => setForm({ ...form, hoursEnabled: e.target.checked })}
+              />
+              Count response targets in working hours only
+            </label>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Working days">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label, day) => {
+                const on = form.hoursDays.includes(day);
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={on}
+                    disabled={!form.hoursEnabled}
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        hoursDays: on ? form.hoursDays.filter((d) => d !== day) : [...form.hoursDays, day].sort(),
+                      })
+                    }
+                    className="px-2.5 py-1 rounded-full text-xs border disabled:opacity-50"
+                    style={{
+                      borderColor: on ? C.navy : C.border,
+                      backgroundColor: on ? C.navy : "transparent",
+                      color: on ? "#fff" : C.text,
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-sm" style={{ color: C.text }}>
+              <label htmlFor="hours-start">From</label>
+              <select
+                id="hours-start"
+                value={form.hoursStart}
+                disabled={!form.hoursEnabled}
+                onChange={(e) => setForm({ ...form, hoursStart: Number(e.target.value) })}
+                className="px-2 py-1.5 rounded-lg border text-sm"
+                style={inputStyle}
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
+                ))}
+              </select>
+              <label htmlFor="hours-end">to</label>
+              <select
+                id="hours-end"
+                value={form.hoursEnd}
+                disabled={!form.hoursEnabled}
+                onChange={(e) => setForm({ ...form, hoursEnd: Number(e.target.value) })}
+                className="px-2 py-1.5 rounded-lg border text-sm"
+                style={inputStyle}
+              >
+                {Array.from({ length: 24 }, (_, i) => i + 1).map((h) => (
+                  <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
+                ))}
+              </select>
+              <label htmlFor="hours-tz">time zone</label>
+              <input
+                id="hours-tz"
+                value={form.hoursTimezone}
+                disabled={!form.hoursEnabled}
+                onChange={handleChange("hoursTimezone")}
+                placeholder="Asia/Karachi"
+                className="px-2 py-1.5 rounded-lg border text-sm w-40"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+        </Field>
+
+        <Field
+          C={C}
+          label="Wellbeing support message"
+          hint="Shown, instead of an AI answer, when someone in the chat may be thinking of harming themselves. Give your counselling office, hours and the helplines you trust. Empty = a general message telling them to contact the counselling office or emergency services."
+        >
+          <textarea
+            value={form.wellbeingMessage}
+            onChange={handleChange("wellbeingMessage")}
+            placeholder={"Student Counselling Centre — Block A, Room 12, Mon–Fri 9am–5pm\nPhone: [counselling phone] · counselling@youruniversity.edu\nOut of hours: [helpline your university recommends]"}
+            rows={4}
+            maxLength={1000}
             className={inputClass}
             style={inputStyle}
           />

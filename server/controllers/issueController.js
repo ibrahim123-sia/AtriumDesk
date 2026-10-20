@@ -1,4 +1,5 @@
 import rateLimit from "express-rate-limit";
+import fetch from "node-fetch";
 import { notify, safeHtml, multilineHtml } from "../services/notify.js";
 import { suggestDepartment } from "../services/departmentSuggestion.js";
 import { deleteUpload } from "../services/fileStore.js";
@@ -1088,6 +1089,58 @@ export const recordAnswerSuggestionHelped = async (req, res) => {
   } catch (error) {
     console.error("recordAnswerSuggestionHelped error:", error);
     res.status(500).json({ success: false, message: "Failed to record" });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /api/issue/department/:id/draft-reply
+//   A first draft of a reply, from the university's knowledge base, for the
+//   staff member to edit and send — never sent automatically.
+// ---------------------------------------------------------------------------
+
+const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://localhost:8000";
+
+export const draftReplyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.tenant?.slug || "?"}:${req.user?._id}`,
+  message: { success: false, message: "Too many drafts requested — please wait a few minutes." },
+});
+
+export const draftStaffReply = async (req, res) => {
+  try {
+    const issue = await req.models.Issue.findById(req.params.id).populate("department", "code name");
+    if (!issue) return res.status(404).json({ success: false, message: "Issue not found" });
+    if (!sameDept(issue, req.user)) {
+      return res.status(403).json({ success: false, message: "Issue belongs to another department" });
+    }
+    const response = await fetch(`${PYTHON_BACKEND_URL}/issues/draft-reply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-internal-secret": process.env.INTERNAL_SECRET || "" },
+      body: JSON.stringify({
+        tenant_slug: req.tenant.slug,
+        title: issue.title,
+        description: issue.description,
+        thread: issue.replies.map((r) => ({ role: r.authorRole, message: r.message })),
+        university_name: req.tenant?.branding?.universityName || req.tenant?.name || "",
+        department_name: issue.department?.name || "",
+        staff_name: req.user.name,
+        student_name: issue.studentName,
+      }),
+      signal: AbortSignal.timeout(90000),
+    });
+    if (!response.ok) {
+      return res.status(502).json({ success: false, message: "Couldn't draft a reply right now — please write it yourself or try again shortly." });
+    }
+    const data = await response.json();
+    logAiUsage(req.models, data.usage, { userType: req.user.role, userId: req.user._id, endpoint: "reply_draft" });
+    if (!data.draft) return res.status(502).json({ success: false, message: "The draft came back empty — try again." });
+    res.json({ success: true, draft: data.draft });
+  } catch (error) {
+    console.error("draftStaffReply error:", error.message);
+    res.status(502).json({ success: false, message: "Couldn't draft a reply right now — please write it yourself or try again shortly." });
   }
 };
 

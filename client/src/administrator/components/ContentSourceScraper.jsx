@@ -76,6 +76,21 @@ const ContentSourceScraper = () => {
 
   const isRunning = status?.status === "running";
 
+  const onSchedule = async (e) => {
+    const refreshDays = Number(e.target.value);
+    try {
+      const { data } = await axios.patch("/api/admin/content-source/schedule", { refreshDays }, { headers: { Authorization: token } });
+      if (data.success) {
+        setStatus(data.contentSource);
+        toast.success(refreshDays ? `The site will be re-scraped every ${refreshDays} days` : "Automatic refresh turned off");
+      } else toast.error(data.message || "Couldn't save the schedule");
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Couldn't save the schedule");
+    }
+  };
+  const last = status?.completedAt || status?.startedAt;
+  const nextRefresh = status?.refreshDays && last ? new Date(new Date(last).getTime() + status.refreshDays * 86400000) : null;
+
   return (
     <div className="p-5 rounded-xl border space-y-4" style={{ backgroundColor: C.surface, borderColor: C.border }}>
       <div className="flex items-center gap-2">
@@ -84,7 +99,8 @@ const ContentSourceScraper = () => {
       </div>
       <p className="text-xs" style={{ color: C.muted }}>
         Populates the chatbot's knowledge base from your own site's public pages, via its XML sitemap. Re-running
-        replaces the previous content entirely. This can take several minutes for a real site.
+        replaces the website pages; answers you added by hand (Data, Failed Questions) are kept. This can take
+        several minutes for a real site.
       </p>
 
       <form onSubmit={handleStart} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -150,6 +166,24 @@ const ContentSourceScraper = () => {
               <XCircle className="w-4 h-4" /> {status.error || "Scrape failed"}
             </span>
           )}
+        </div>
+        <div className="sm:col-span-3 flex flex-wrap items-center gap-2 text-xs" style={{ color: C.muted }}>
+          <label htmlFor="kb-refresh">Refresh automatically</label>
+          <select
+            id="kb-refresh"
+            value={status?.refreshDays || 0}
+            onChange={onSchedule}
+            disabled={!status?.sitemapUrl}
+            className="px-2 py-1.5 rounded-lg border text-xs disabled:opacity-60"
+            style={{ backgroundColor: C.input, borderColor: C.border, color: C.text }}
+          >
+            <option value={0}>Off — only when I press Scrape now</option>
+            <option value={7}>Every week</option>
+            <option value={14}>Every 2 weeks</option>
+            <option value={30}>Every month</option>
+          </select>
+          {nextRefresh && <span>Next: {nextRefresh.toLocaleDateString()}</span>}
+          {!status?.sitemapUrl && <span>(run a scrape once first)</span>}
         </div>
       </form>
     </div>

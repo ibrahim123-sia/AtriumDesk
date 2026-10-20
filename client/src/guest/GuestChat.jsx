@@ -9,7 +9,7 @@ import {
   fetchGuestListings,
   fetchGuestBranding,
 } from "../redux/slices/guestSlice";
-import { AnswerSources, AnswerFeedback } from "../student/components/Message";
+import { AnswerSources, AnswerFeedback, WellbeingNote } from "../student/components/Message";
 import { starterQuestionsFor } from "../utils/starterQuestions";
 import { toggleTheme as toggleThemeAction } from "../redux/slices/themeSlice";
 import GuestSidebar from "./GuestSidebar";
@@ -158,6 +158,7 @@ const GuestChat = ({ embedded = false }) => {
     sources: msg.sources,
     answerIndex: msg.answerIndex,
     feedback: msg.feedback,
+    safety: msg.safety,
   }));
 
   const rateAnswer = async (answerIndex, helpful) => {
@@ -413,6 +414,7 @@ const GuestChat = ({ embedded = false }) => {
                     {message.sender === "bot" ? (
                       // Answers come back as markdown (bold figures, lists).
                       <div className="text-sm md:text-base wrap-break-words min-w-0 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1">
+                        {message.safety === "wellbeing" && <WellbeingNote isDark={theme === "dark"} />}
                         <Markdown>{message.text}</Markdown>
                         <AnswerSources sources={message.sources} color={muted} linkColor={accent} />
                       </div>
@@ -436,7 +438,7 @@ const GuestChat = ({ embedded = false }) => {
                       minute: "2-digit",
                     })}
                   </p>
-                  {message.sender === "bot" && Number.isInteger(message.answerIndex) && (
+                  {message.sender === "bot" && !message.safety && Number.isInteger(message.answerIndex) && (
                     <div className="flex justify-end -mt-5">
                       <AnswerFeedback
                         value={message.feedback}

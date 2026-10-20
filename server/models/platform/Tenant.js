@@ -64,7 +64,19 @@ const tenantSchema = new mongoose.Schema(
       // The "try asking" questions on the guest and student chat screens.
       // Empty = the platform's default set (client/src/utils/starterQuestions.js).
       guestStarterQuestions: { type: [String], default: undefined },
+      // Shown when someone in the chat may be in crisis: counselling office,
+      // hours, phone, helplines the university trusts (services/wellbeing.js).
+      wellbeingMessage: { type: String, default: "" },
       studentStarterQuestions: { type: [String], default: undefined },
+    },
+    // Count department SLAs in working hours only (services/businessHours.js).
+    // Days: 0 = Sunday … 6 = Saturday; hours in the tenant's own time zone.
+    businessHours: {
+      enabled: { type: Boolean, default: false },
+      days: { type: [Number], default: () => [1, 2, 3, 4, 5] },
+      startHour: { type: Number, default: 9, min: 0, max: 23 },
+      endHour: { type: Number, default: 17, min: 1, max: 24 },
+      timezone: { type: String, default: "Asia/Karachi" },
     },
     // Semester fee calculator (guest-facing Scholarships tab) — a single
     // flat per-credit-hour rate. Real fee structures can be more layered
@@ -131,6 +143,9 @@ const tenantSchema = new mongoose.Schema(
       pagesScraped: { type: Number, default: 0 },
       chunksCreated: { type: Number, default: 0 },
       error: { type: String, default: "" },
+      // Re-scrape the site automatically every N days (0 = only by hand),
+      // so the chatbot keeps up with the university's website.
+      refreshDays: { type: Number, default: 0, enum: [0, 7, 14, 30] },
     },
   },
   { timestamps: true }

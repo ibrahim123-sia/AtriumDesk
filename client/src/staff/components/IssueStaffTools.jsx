@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { Lock, ArrowRightLeft, MessageSquareText, Trash2, Plus } from "lucide-react";
+import { Lock, ArrowRightLeft, MessageSquareText, Trash2, Plus, Sparkles } from "lucide-react";
 import moment from "moment";
 import toast from "react-hot-toast";
 import {
@@ -11,6 +11,7 @@ import {
   fetchSavedReplies,
   createSavedReply,
   deleteSavedReply,
+  draftStaffReply,
 } from "../../redux/slices/issueSlice";
 
 const CLOSED_STATUSES = ["Resolved", "Closed", "Rejected"];
@@ -291,3 +292,36 @@ export const SavedReplyPicker = ({ issue, reply, onInsert, C }) => {
     </div>
   );
 };
+
+// Asks the assistant for a first draft from the knowledge base. The staff
+// member reviews it in the reply box; nothing is sent until they press Send.
+export const DraftReplyButton = ({ issue, reply, onDraft, C }) => {
+  const dispatch = useDispatch();
+  const [busy, setBusy] = useState(false);
+
+  const onClick = async () => {
+    setBusy(true);
+    const result = await dispatch(draftStaffReply(issue._id)).unwrap();
+    setBusy(false);
+    if (!result.success) {
+      toast.error(result.message || "Couldn't draft a reply");
+      return;
+    }
+    onDraft(reply.trim() ? `${reply.trimEnd()}\n\n${result.draft}` : result.draft);
+    toast.success("Draft added — check it before sending.");
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium disabled:opacity-60"
+      style={{ borderColor: C.border, color: C.text }}
+      title="A first draft from your university's knowledge base — review before sending"
+    >
+      <Sparkles className="w-3.5 h-3.5" /> {busy ? "Drafting…" : "Draft a reply"}
+    </button>
+  );
+};
+

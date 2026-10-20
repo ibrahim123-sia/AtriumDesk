@@ -9,6 +9,7 @@ import {
   updateDepartment,
   deactivateDepartment,
 } from "../../redux/slices/departmentSlice";
+import { fetchTenantSettings } from "../../redux/slices/tenantSlice";
 import AdminTable, { AdminTableRow, AdminTableCell } from "../components/AdminTable";
 import AdminModal from "../components/AdminModal";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -21,6 +22,9 @@ const Departments = () => {
   const tenantBranding = useSelector((s) => s.tenant.branding);
   const C = getPalette(theme === "dark", tenantBranding);
   const { departments, loading, submitting } = useSelector((s) => s.department);
+  // "working hours" when the university counts targets that way (Settings).
+  const workingHours = useSelector((s) => s.tenant.settings?.businessHours?.enabled);
+  const hourUnit = workingHours ? "working h" : "h";
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ code: "", name: "", description: "" });
@@ -33,6 +37,7 @@ const Departments = () => {
 
   useEffect(() => {
     dispatch(fetchDepartments());
+    dispatch(fetchTenantSettings());
   }, [dispatch]);
 
   const handleCreate = async (e) => {
@@ -159,7 +164,7 @@ const Departments = () => {
                 </AdminTableCell>
                 <AdminTableCell>
                   <span style={{ color: d.slaThresholdHours ? C.text : C.muted }}>
-                    {d.slaThresholdHours ? `${d.slaThresholdHours} h` : "48 h (default)"}
+                    {d.slaThresholdHours ? `${d.slaThresholdHours} ${hourUnit}` : `48 ${hourUnit} (default)`}
                   </span>
                 </AdminTableCell>
                 <AdminTableCell>

@@ -40,6 +40,8 @@ export const chatSchema = new mongoose.Schema(
         },
         // Official pages behind a confident answer, shown under it.
         sources: { type: [String], default: undefined },
+        // "wellbeing": a fixed support reply (services/wellbeing.js), not a model answer.
+        safety: { type: String, default: undefined },
         // The student's thumbs up/down on this answer.
         feedback: {
           helpful: { type: Boolean, default: undefined },

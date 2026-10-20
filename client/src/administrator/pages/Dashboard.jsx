@@ -213,6 +213,12 @@ const AssistantInsights = ({ a, C }) => {
           </div>
         ))}
       </div>
+      {a.wellbeingResponses > 0 && (
+        <p className="text-xs mt-3" style={{ color: C.muted }}>
+          The wellbeing support reply (with your counselling contacts) was shown {a.wellbeingResponses} time
+          {a.wellbeingResponses === 1 ? "" : "s"}. Set its text in Settings.
+        </p>
+      )}
       {a.topGaps.length > 0 && (
         <div className="mt-4">
           <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: C.muted }}>

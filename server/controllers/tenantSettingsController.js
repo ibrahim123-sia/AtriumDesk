@@ -3,13 +3,14 @@ import { invalidateTenantCache } from "../services/tenantRegistry.js";
 import { encryptField } from "../services/fieldCrypto.js";
 import { invalidateMailerCache } from "../services/mailer.js";
 import { findRedosRisk } from "../services/regexSafety.js";
+import { isValidTimeZone } from "../services/businessHours.js";
 
 // The Rev 5 §11 branding fields self-service editing was always meant to
 // unlock — university name/short, logo, primary color, support email.
 // Structural fields (slug, status, dbName, chromaCollection,
 // provisionedAdministrator) stay out of Administrator's reach; those are
 // Super Admin / provisioning concerns, not branding.
-const EDITABLE_BRANDING_FIELDS = ["universityName", "universityShort", "logoUrl", "primaryColor", "supportEmail"];
+const EDITABLE_BRANDING_FIELDS = ["universityName", "universityShort", "logoUrl", "primaryColor", "supportEmail", "wellbeingMessage"];
 
 // Starter questions: up to 6, one line each, no duplicates.
 const STARTER_LIST_FIELDS = ["guestStarterQuestions", "studentStarterQuestions"];
@@ -39,6 +40,7 @@ const serializeTenant = (tenant) => ({
   studentEmailPattern: tenant.studentEmailPattern,
   ragConfig: tenant.ragConfig,
   feeConfig: tenant.feeConfig,
+  businessHours: tenant.businessHours,
   // Never serialize the encrypted app password itself — only whether one
   // is configured, so the client can show "configured" vs. an empty field
   // without ever round-tripping the secret.
@@ -62,7 +64,7 @@ export const getTenantSettings = async (req, res) => {
 };
 
 export const updateTenantSettings = async (req, res) => {
-  const { name, branding, emailDomains, staffEmailDomainPattern, studentEmailPattern, smtp, ragConfig, feeConfig } = req.body || {};
+  const { name, branding, emailDomains, staffEmailDomainPattern, studentEmailPattern, smtp, ragConfig, feeConfig, businessHours } = req.body || {};
   try {
     const Tenant = getTenantModel();
     const tenant = await Tenant.findById(req.tenant._id).select("+smtp.appPasswordEncrypted");
@@ -76,7 +78,7 @@ export const updateTenantSettings = async (req, res) => {
 
     if (branding && typeof branding === "object") {
       for (const key of EDITABLE_BRANDING_FIELDS) {
-        if (branding[key] !== undefined) tenant.branding[key] = String(branding[key]).trim();
+        if (branding[key] !== undefined) tenant.branding[key] = String(branding[key]).trim().slice(0, key === "wellbeingMessage" ? 1000 : 300);
       }
       for (const key of STARTER_LIST_FIELDS) {
         if (branding[key] !== undefined) {
@@ -166,6 +168,21 @@ export const updateTenantSettings = async (req, res) => {
         }
         tenant.feeConfig.feePerCreditHour = rate;
       }
+    }
+
+    if (businessHours && typeof businessHours === "object") {
+      const days = Array.isArray(businessHours.days)
+        ? [...new Set(businessHours.days.map(Number))].filter((d) => Number.isInteger(d) && d >= 0 && d <= 6).sort()
+        : tenant.businessHours?.days || [1, 2, 3, 4, 5];
+      const startHour = businessHours.startHour !== undefined ? Number(businessHours.startHour) : tenant.businessHours?.startHour ?? 9;
+      const endHour = businessHours.endHour !== undefined ? Number(businessHours.endHour) : tenant.businessHours?.endHour ?? 17;
+      const timezone = businessHours.timezone !== undefined ? String(businessHours.timezone).trim() : tenant.businessHours?.timezone || "Asia/Karachi";
+      if (!days.length) return res.status(400).json({ success: false, message: "Choose at least one working day" });
+      if (!Number.isInteger(startHour) || !Number.isInteger(endHour) || startHour < 0 || endHour > 24 || startHour >= endHour) {
+        return res.status(400).json({ success: false, message: "Working hours must start before they end (0–24)" });
+      }
+      if (!isValidTimeZone(timezone)) return res.status(400).json({ success: false, message: `Unknown time zone "${timezone}"` });
+      tenant.businessHours = { enabled: !!businessHours.enabled, days, startHour, endHour, timezone };
     }
 
     if (smtp && typeof smtp === "object") {

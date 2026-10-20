@@ -50,8 +50,7 @@ import { listFailedQuestions, resolveFailedQuestionGroup } from "../controllers/
 import {
   getContentSourceStatus,
   triggerContentScrape,
-  reportContentScrapeResult,
-} from "../controllers/adminContentSourceController.js";
+  reportContentScrapeResult, setContentRefreshSchedule } from "../controllers/adminContentSourceController.js";
 import {
   listActivityTabs,
   getActivityTab,
@@ -149,5 +148,6 @@ router.patch("/tenant", requireRole("admin"), updateTenantSettings);
 // verifyAdmin below — kept consistent so "data" means the whole Data page.
 router.get("/content-source", requireStaffPermission("data"), getContentSourceStatus);
 router.post("/content-source/scrape", requireStaffPermission("data"), triggerContentScrape);
+router.patch("/content-source/schedule", requireStaffPermission("data"), setContentRefreshSchedule);
 
 export default router;

@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import os from "os";
 import fetch from "node-fetch";
+import { mentionsSelfHarm, wellbeingReply } from "../services/wellbeing.js";
 import FormData from "form-data";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,7 +44,7 @@ export async function getPythonBackendResponse(question, context = {}) {
       }),
       // node-fetch v3 ignores a `timeout` option; this is what stops a stuck
       // AI service from holding the request open forever.
-      signal: AbortSignal.timeout(context.timeoutMs || 60000),
+      signal: AbortSignal.timeout(context.timeoutMs || 120000),
     });
 
     if (!response.ok) {
@@ -238,7 +239,10 @@ export const textMessageController = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    const { chatId, prompt } = req.body;
+    const { chatId } = req.body;
+    const prompt = typeof req.body.prompt === "string" ? req.body.prompt.trim() : "";
+    if (!prompt) return res.status(400).json({ success: false, message: "Type a question first" });
+    if (prompt.length > 4000) return res.status(400).json({ success: false, message: "Please keep a question under 4,000 characters" });
 
     const chat = await req.models.Chat.findOne({ userId, _id: chatId });
     if (!chat) {
@@ -263,25 +267,32 @@ export const textMessageController = async (req, res) => {
     chat.messages.push(userMessage);
     await chat.save();
 
-    // Get response from Python backend
+    // Get response from Python backend — unless the student may be in
+    // crisis: then a fixed support reply with the university's contacts.
     let replyContent, confidenceTier, usage, sources = [];
-    try {
-      ({ answer: replyContent, confidenceTier, usage, sources } = await getPythonBackendResponse(prompt, {
-        userId,
-        chatId,
-        history,
-        tenantSlug: req.tenant.slug,
-        branding: req.tenant?.branding,
-        ragConfig: req.tenant?.ragConfig,
-      }));
-    } catch (error) {
-      console.error("Failed to get response from Python backend:", error.message);
-      replyContent = "Sorry, I'm unable to connect to the university knowledge base at the moment. Please try again later.";
+    const safety = mentionsSelfHarm(prompt) ? "wellbeing" : undefined;
+    if (safety) {
+      replyContent = wellbeingReply(req.tenant?.branding);
       confidenceTier = null;
-      usage = null;
+    } else {
+      try {
+        ({ answer: replyContent, confidenceTier, usage, sources } = await getPythonBackendResponse(prompt, {
+          userId,
+          chatId,
+          history,
+          tenantSlug: req.tenant.slug,
+          branding: req.tenant?.branding,
+          ragConfig: req.tenant?.ragConfig,
+        }));
+      } catch (error) {
+        console.error("Failed to get response from Python backend:", error.message);
+        replyContent = "Sorry, I'm unable to connect to the university knowledge base at the moment. Please try again later.";
+        confidenceTier = null;
+        usage = null;
+      }
+      logIfFailedQuestion(req.models, { question: prompt, confidenceTier, userType: "student", userId });
+      logAiUsage(req.models, usage, { userType: req.user.role, userId, endpoint: "chat" });
     }
-    logIfFailedQuestion(req.models, { question: prompt, confidenceTier, userType: "student", userId });
-    logAiUsage(req.models, usage, { userType: req.user.role, userId, endpoint: "chat" });
 
     // First exchange names the chat after the question's first words.
     if (chat.messages.filter((m) => m.role === "user").length === 1) {
@@ -295,6 +306,7 @@ export const textMessageController = async (req, res) => {
       content: replyContent,
       confidenceTier,
       sources: sources?.length ? sources : undefined,
+      safety,
       timestamp: Date.now(),
     });
     await chat.save();

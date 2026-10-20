@@ -9,7 +9,7 @@ export const aiUsageLogSchema = new mongoose.Schema(
   {
     userType: { type: String, enum: ["student", "staff", "admin", "guest"], required: true },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-    endpoint: { type: String, enum: ["chat", "voice", "email", "guest_chat", "issue_suggestion"], required: true },
+    endpoint: { type: String, enum: ["chat", "voice", "email", "guest_chat", "issue_suggestion", "reply_draft"], required: true },
     provider: { type: String, default: "" },
     model: { type: String, default: "" },
     promptTokens: { type: Number, default: 0 },

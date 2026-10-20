@@ -96,12 +96,12 @@ export const getAssistantInsights = async (req, res) => {
   const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 1), 365);
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   try {
-    const [byTier, guestAnswers, feedback, handoffs, openGaps, topGaps, answeredBeforeTicket] = await Promise.all([
+    const [byTier, guestAnswers, feedback, handoffs, openGaps, topGaps, answeredBeforeTicket, wellbeing] = await Promise.all([
       // Student answers by retrieval confidence (chat messages are embedded).
       req.models.Chat.aggregate([
         { $match: { updatedAt: { $gte: since } } },
         { $unwind: "$messages" },
-        { $match: { "messages.role": "assistant", "messages.timestamp": { $gte: since.getTime() } } },
+        { $match: { "messages.role": "assistant", "messages.timestamp": { $gte: since.getTime() }, "messages.safety": { $exists: false } } },
         { $group: { _id: "$messages.confidenceTier", count: { $sum: 1 } } },
       ]),
       // Guest sessions live in memory, so the usage log is the record of
@@ -122,6 +122,13 @@ export const getAssistantInsights = async (req, res) => {
       // The new-issue form showed an answer and the student said it was what
       // they needed — a ticket that didn't have to be filed.
       req.models.AnswerFeedback.countDocuments({ context: "issue_form", helpful: true, createdAt: { $gte: since } }),
+      // How often the support reply was shown (a count only — no content).
+      req.models.Chat.aggregate([
+        { $match: { updatedAt: { $gte: since } } },
+        { $unwind: "$messages" },
+        { $match: { "messages.safety": "wellbeing", "messages.timestamp": { $gte: since.getTime() } } },
+        { $count: "n" },
+      ]),
     ]);
 
     const tiers = { high: 0, medium: 0, low: 0, unknown: 0 };
@@ -145,6 +152,7 @@ export const getAssistantInsights = async (req, res) => {
       // Chats a student turned into a ticket to a department.
       handoffs,
       answeredBeforeTicket,
+      wellbeingResponses: wellbeing[0]?.n || 0,
       feedback: {
         ...votes,
         total: totalVotes,
