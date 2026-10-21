@@ -178,6 +178,8 @@ cd server && npm test                  # node --test (113 tests) — matching, C
                                        # file store, tenant isolation, and service-desk integration tests
                                        # (issues, guests, data rights, RSVPs, alerts, push, walk-in queue)
 cd client && npm run lint && npm run build
+cd python && python -m pytest          # AI-service unit tests (keyword matcher, rate-limit parsing, scraper hash)
+cd python/eval && python retrieval_eval.py   # golden set vs retrieved context only — no LLM calls
 cd python/eval && python eval.py       # golden-set RAG evaluation against a running AI service (needs INTERNAL_SECRET)
 ```
 
@@ -317,8 +319,8 @@ AtriumDesk/
 
 ### Known issues
 
-- Guests asking about the university's scholarships in some wordings get "no information" while students get an answer (golden case `guest-scholarships-coverage`); a guest-scope prompt fix is pending measurement.
-- The AI service's failover needs valid keys for every provider in `CLOUD_LLM_ORDER`; a free Groq key allows 200,000 tokens a day. Reply drafts and chat answers can take up to a minute when the provider is rate-limiting.
+- "What scholarships does the university offer and how much do they cover?" misses the 100% row of MAJU's scholarship table for everyone (golden cases `*-scholarships-coverage`): the table is split into many small chunks. Needs table-aware chunking and a re-scrape, or an Administrator-written answer.
+- The free LLM tiers are small: Groq keys from one organisation share 8,000 tokens/minute (about two answers a minute) and 200,000 tokens/day, and Gemini sometimes answers 503 "high demand". Use keys from different organisations or a paid tier for real traffic.
 - Browser notifications need `VAPID_*` keys in the deployment's secrets; changing them later ends every existing subscription.
 - Event check-in codes are typed by the person at the door (no QR scanner yet).
 

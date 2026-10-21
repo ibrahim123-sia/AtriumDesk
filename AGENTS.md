@@ -2298,6 +2298,12 @@ The review stayed inside AtriumDesk's own domain — the AI student assistant, t
 | Working-hours SLA | `Tenant.businessHours {enabled, days, startHour, endHour, timezone}`; when enabled, first-reply targets count working hours only | `server/services/businessHours.js`, `scheduler.js` (`isSlaBreached`) |
 | Knowledge-base refresh | `Tenant.contentSource.refreshDays` (0 / 7 / 14 / 30) re-runs the website scrape; hand-written answers are kept | `adminContentSourceController.js` (`startContentScrape`), `scheduler.js` (`runKnowledgeBaseRefresh`) |
 | Admin issue view | The administrator's issue drawer shows internal notes | `client/src/administrator/pages/Query.jsx` |
+| Keyword search speed (2026-10-21) | Words, stems and URL tokens of every chunk are indexed once per collection version and `_stem` is cached; one keyword pass went from 75–90 s to under 0.2 s with identical results. This, not the LLM, was why chatbot answers took a minute | `python/database.py` (`_load_word_index`), `python/test_keyword_search.py` |
+| Result de-duplication | Search results are de-duplicated by the whole chunk text, not its first 120 characters (chunks of one page share a title/heading prefix; 376 distinct MAJU chunks were being dropped) | `database.search`, `rag._merge_search_results` |
+| Listing embeddings | `server/scripts/backfillListingEmbeddings.js` re-embeds every approved listing and removes embeddings whose listing is no longer approved or no longer exists (`GET /listings/embedded-ids`); run it after changing what an embedding stores | `python/api.py`, `python/listing_matching.py` |
+| Guest listings | Scholarship embeddings store `scope`; guests retrieve events and internal scholarships (`GUEST_WHERE`), never jobs or external scholarships | `listing_matching.search_listings(guest=True)`, `rag._retrieve_listing_context` |
+| LLM failover | No Groq SDK retries (`max_retries=0`): Groq keys → Gemini at once; one more round only if every provider failed and Groq asked for a wait ≤ `LLM_RATE_LIMIT_WAIT` (20 s). Cloud calls time out at `CLOUD_LLM_TIMEOUT` (45 s). Gemini default `gemini-3.5-flash` (2.5-flash is withdrawn for new keys) | `python/rag.py` (`_llm_chat`, `GroqRateLimited`), `python/config.py` |
+| Retrieval eval | `python/eval/retrieval_eval.py` checks every golden case's expected facts against the context `rag.retrieve_context()` returns — no LLM calls, so retrieval/chunking changes can be measured freely before one `eval.py` run | `python/eval/` |
 
 ## Rev8 §E.7 Built after the review — events, alerts, push, walk-ins
 
@@ -2317,8 +2323,8 @@ Tests: `cd server && node --test` — 113 tests, including 16 integration tests 
 
 | # | Item | Status |
 |---|---|---|
-| 1 | Guests asking "What scholarships does the university offer and how much do they cover?" get the no-information reply (students get the answer) | Open — a prompt clarification of the guest scope is ready but unmeasured; golden case `guest-scholarships-coverage` fails until fixed. Ship only after a golden-set run with a working LLM budget |
-| 2 | LLM failover: Groq key #2 and Gemini key invalid; Groq key #1 hits 200k tokens/day | Open — needs working keys or a paid tier (Part D §10 items 3 and 8) |
+| 1 | "What scholarships does the university offer and how much do they cover?" — the golden cases `guest-scholarships-coverage` and `student-scholarships-coverage` miss the "100%" row | Diagnosed 2026-10-21. The guest/student difference was a deleted listing's leftover embedding (removed); the prompt edit was measured and didn't help, so it wasn't shipped. The fact is on `jinnah.edu/scholarships/`, whose table is split into 18 small chunks under one heading, so the row never ranks (Rev 5 §8.8.3). Fix: keep tables together when chunking, re-scrape, then run `retrieval_eval.py` and `eval.py` — or have the Administrator answer it from Failed Questions |
+| 2 | LLM capacity | Both Groq keys work but belong to one Groq organisation, so they share its 8,000 tokens/minute (about two answers a minute) and 200,000 tokens/day; Gemini (`gemini-3.5-flash`) works but returns 503 "high demand" at times. For real traffic: a key from a second organisation, a paid tier, or a less loaded Gemini model. The last full golden run (2026-10-21) answered 12/19, all 12 correct; the other 7 hit the day's Groq limit and are to be re-run |
 | 3 | Tenant SMTP credentials rejected (535) | Open — configure a working account or an `SMTP_*` relay |
 | 4 | Production push keys | Set `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` as deployment secrets once and keep them — new keys end every existing browser subscription |
 | 5 | Cloudflare deploy | Built and verified locally; the real deploy waits on the owner's Cloudflare login |
