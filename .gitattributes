@@ -1,0 +1,16 @@
+# Store text with LF line endings in the repository, whatever the OS.
+* text=auto eol=lf
+
+# Binary files: never touch line endings or try to diff them.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.pdf  binary
+*.woff binary
+*.woff2 binary
+
+# Lockfiles are generated; don't show them in diffs by default.
+package-lock.json linguist-generated=true -diff

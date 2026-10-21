@@ -1,11 +1,17 @@
 # AtriumDesk 🎓
 ### Multi-tenant, AI-powered student-portal SaaS — onboard any university
 
-![React](https://img.shields.io/badge/Frontend-React-61DAFB?style=flat&logo=react)
-![Node.js](https://img.shields.io/badge/Backend-Node.js-339933?style=flat&logo=nodedotjs)
-![Python](https://img.shields.io/badge/AI-Python-3776AB?style=flat&logo=python)
+![React](https://img.shields.io/badge/React-19-61DAFB?style=flat&logo=react&logoColor=white)
+![Redux Toolkit](https://img.shields.io/badge/Redux_Toolkit-764ABC?style=flat&logo=redux&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=flat&logo=tailwindcss&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-Express-339933?style=flat&logo=nodedotjs&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-database--per--tenant-47A248?style=flat&logo=mongodb&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-RAG-009688?style=flat&logo=fastapi&logoColor=white)
+![Cloudflare](https://img.shields.io/badge/Deploy-Cloudflare-F38020?style=flat&logo=cloudflare&logoColor=white)
+![License](https://img.shields.io/badge/License-Proprietary-lightgrey?style=flat)
 
-AtriumDesk is a full-stack AI-powered platform that consolidates university student services into one intelligent system, built database-per-tenant so any university can be onboarded. At its core is a smart chatbot (RAG over each tenant's own scraped website content) with voice input support — making university help accessible to every student. There is no mobile app; the client is a responsive web app with an offline-capable PWA shell.
+AtriumDesk is a full-stack AI-powered platform that consolidates university student services into one intelligent system, built database-per-tenant so any university can be onboarded. At its core is a smart chatbot (RAG over each tenant's own scraped website content) with voice input support — making university help accessible to every student. The client is a responsive web app with an installable, offline-capable PWA shell.
 
 > **Note:** AtriumDesk is a university-agnostic product and is not affiliated with, or officially launched for, any specific institution. Muhammad Ali Jinnah University (MAJU) is a *pilot / prospective tenant* — sample data was shared for evaluation, and they may onboard as a tenant in future.
 
@@ -80,10 +86,10 @@ python/    →  FastAPI + ChromaDB + sentence-transformers — one Chroma collec
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js v18+
-- Python 3.10+
-- MongoDB running locally or a cloud URI
-- npm
+- Node.js 20+ (the production image uses Node 22)
+- Python 3.12
+- MongoDB — a local server or an Atlas URI
+- At least one LLM key (Groq or Gemini), or a local Ollama
 
 ### Installation
 
@@ -91,17 +97,28 @@ python/    →  FastAPI + ChromaDB + sentence-transformers — one Chroma collec
 git clone https://github.com/ibrahim123-sia/AtriumDesk.git
 cd AtriumDesk
 
-# Install dependencies
+# Web client and API server
 cd client && npm install
 cd ../server && npm install
-cd ../python && pip install -r requirements.txt
+
+# AI service, in a virtual environment
+cd ../python
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-### Required env vars
+### Environment variables
 
-See `server/.env.example`, `python/.env.example`, and `client/.env.example` for the full, current list of
-every environment variable actually read by the code (copy each to `.env` and fill in real values) —
-those files are the source of truth; the summary below is a quick-glance overview only.
+Each service has a `.env.example` listing every variable the code reads. Copy it and fill in real values:
+
+```bash
+cp server/.env.example server/.env
+cp python/.env.example python/.env
+cp client/.env.example client/.env
+```
+
+Those files are the source of truth; the summary below is a quick overview.
 
 `server/.env` (highlights)
 ```
@@ -178,7 +195,7 @@ cd server && npm test                  # node --test (113 tests) — matching, C
                                        # file store, tenant isolation, and service-desk integration tests
                                        # (issues, guests, data rights, RSVPs, alerts, push, walk-in queue)
 cd client && npm run lint && npm run build
-cd python && python -m pytest          # AI-service unit tests (keyword matcher, rate-limit parsing, scraper hash)
+cd python && python -m pytest          # AI-service unit tests in python/tests (keyword matcher, rate-limit parsing, scraper hash)
 cd python/eval && python retrieval_eval.py   # golden set vs retrieved context only — no LLM calls
 cd python/eval && python eval.py       # golden-set RAG evaluation against a running AI service (needs INTERNAL_SECRET)
 ```
@@ -263,59 +280,51 @@ other sites may frame (see `client/public/_headers`).
 
 ```
 AtriumDesk/
-├── client/                       # React frontend
+├── client/                    # React web app — every role, plus the PWA shell
+│   ├── public/                # service worker, manifest, website widget (widget.js), _headers
 │   └── src/
-│       ├── platform/             # /platform/* Super Admin pages, components, layout
-│       ├── administrator/        # /admin/* pages, components, layout
-│       ├── staff/                # /staff/* dashboard + issue inbox (role-delegable);
-│       │                         # components/IssueStaffTools (notes, transfer, saved replies)
-│       ├── student/              # chat, issues, scholarships, jobs, events, saved & applications
-│       ├── guest/                # public landing + guest chatbot (+ /embed for the widget)
-│       ├── profile/              # unified profile + "Your data" (export / delete)
-│       ├── auth/                 # login, register, ProtectedRoute, HomeRoute
-│       ├── components/           # Sidebar, NotificationBell, MainLayout, TopNavbar
-│       ├── redux/slices/         # auth, chat, issue, notification, platform, guest,
-│       │                         # saved, department, admin{Stats,User,Staff,
-│       │                         # Query,Data,Log,Listing,FailedQuestions} slices
-│       └── utils/                # axios, branding, guestTenant
-│   └── public/widget.js          # website chat-button script for universities' sites
-├── server/                       # Node.js / Express
-│   ├── controllers/              # user, chat, issue, department, accountData,
-│   │                             # notification, admin*, platform, internal, message
-│   ├── middlewares/              # auth, requireRole, requireStaffPermission, upload,
-│   │                             # audit, platformAuth, auditPlatformWrites
-│   ├── models/                   # User, Issue, Department, Chat, Listing, SavedListing,
-│   │                             # Notification, AuditLog, LoginEvent, AiUsageLog,
-│   │                             # FailedQuestion, AnswerFeedback, CannedResponse
-│   │                             # (tenant-scoped, see models/registry.js)
-│   │                             # + models/platform/ (Tenant, SuperAdminUser,
-│   │                             # PlatformAuditLog — PlatformDB, not per-tenant)
-│   ├── routes/                   # *Routes.js + platformRoutes.js (/api/platform)
-│   ├── services/                 # notify, mailer, tenantRegistry, urlSafety, etc.
-│   └── scripts/seedTenant.js
-├── python/                       # FastAPI RAG + admin vector CRUD
-│   ├── api.py                    # /ask + admin /chunks + /documents
-│   ├── rag.py                    # RAG pipeline (Groq/Gemini/Ollama, confidence tiering)
-│   ├── database.py               # ChromaDB ops (one collection per tenant)
-│   ├── moderation.py             # English + Roman-Urdu profanity check (safety filter — kept even though the chatbot replies in English only)
-│   ├── scraper.py                # self-service per-tenant website scraper
-│   ├── kb_snapshot.py            # knowledge-base snapshot to R2 (Cloudflare)
-│   ├── eval/                     # golden-set evaluation (eval.py + golden_set.json)
-│   └── chroma_db/                # persistent vector store (gitignored)
-├── cloudflare/                   # Worker + container config for Cloudflare
-└── .github/workflows/            # deploy-cloudflare.yml ("Deploy to Cloudflare")
+│       ├── guest/             # public admissions assistant (+ /embed for the widget)
+│       ├── student/           # chat, issues, scholarships, jobs, events, saved, office queue
+│       ├── staff/             # department dashboard, inbox, issue detail, walk-in queue
+│       ├── administrator/     # /admin/* — one university's admin panel
+│       ├── platform/          # /platform/* — Super Admin
+│       ├── profile/           # unified profile, alerts, notifications, your data
+│       ├── auth/  legal/      # login/register/route guards · privacy and terms
+│       ├── components/        # sidebar, top navbar, notification bell, layouts
+│       ├── redux/slices/      # one slice per area
+│       └── utils/             # axios, branding, guest university, push
+├── server/                    # Node.js / Express API
+│   ├── config/                # shared MongoDB connection + per-tenant databases
+│   ├── controllers/           # request handlers, one file per area
+│   ├── middlewares/           # auth, roles, staff permissions, audit logging, uploads
+│   ├── models/                # per-tenant models (models/registry.js)
+│   │   └── platform/          # PlatformDB: Tenant, SuperAdminUser, PlatformAuditLog
+│   ├── routes/                # /api/* routers; /api/platform for the Super Admin
+│   ├── services/              # matching, scheduler, notify/mailer/push, SLA hours, SSRF guard…
+│   ├── scripts/               # seedTenant, backfillListingEmbeddings, pushUploads
+│   └── test/                  # node --test unit and integration tests
+├── python/                    # FastAPI AI service
+│   ├── api.py                 # HTTP endpoints (/ask, knowledge base, scraping, CV parsing…)
+│   ├── rag.py                 # RAG pipeline, confidence tiers, LLM failover
+│   ├── database.py            # ChromaDB — one collection per tenant, hybrid search
+│   ├── scraper.py             # per-tenant website scraper for the knowledge base
+│   ├── listing_*.py           # scholarship/job scraping, matching, explanations
+│   ├── eval/                  # golden set: retrieval_eval.py, eval.py, golden_set.json
+│   └── tests/                 # pytest unit tests
+├── cloudflare/                # front-door Worker + container config
+├── .github/workflows/         # "Deploy to Cloudflare"
+├── AGENTS.md                  # full product spec — source of truth for coding agents
+├── LICENSE  SECURITY.md       # licence · how to report a vulnerability
+├── .editorconfig  .gitattributes
+└── preview.png
 ```
 
 ---
 
 ## 📚 Documentation
 
-- **`AGENTS.md`** — the complete, unabridged spec (all planning revisions, current governing answers per decision area). This is the source of truth for AI coding agents and for resolving any ambiguity in this README.
-- **`doc/Guide.pdf`** — the same content as `AGENTS.md`, regenerated as a human-readable PDF.
-- **`doc/AtriumDesk_Review_2026-10.pdf`** (+ `.md` source) — the October 2026 review: research against comparable platforms, every change and bug fix, API and data-model changes, how to use the new features, verification and open items. Summarised as Part E of `AGENTS.md`.
-- **`client/README.md`** — the web client: routes per role, scripts, the PWA and the embed/widget.
-
-`doc/` holds internal/academic working files and isn't tracked in git (see `.gitignore`), so its PDFs live locally only, not on GitHub.
+- **[`AGENTS.md`](AGENTS.md)** — the complete spec: every planning revision, the current answer for each decision area, and Part E, the October 2026 review of the built system. This is the source of truth for AI coding agents and for anything this README leaves open.
+- **[`client/README.md`](client/README.md)** — the web client: routes per role, scripts, the PWA and the embed widget.
 
 ### Known issues
 
@@ -328,13 +337,13 @@ AtriumDesk/
 
 ## 👥 Contributing
 
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+Bug reports and suggestions are welcome through GitHub Issues. Please open an issue before starting a pull request, so the change can be agreed first. Security problems go through private reporting instead — see [`SECURITY.md`](SECURITY.md).
 
 ---
 
 ## 📄 License
 
-No license file is currently included in this repository — all rights reserved by default until one is added.
+Proprietary — © 2026 Syed Ibrahim Ali, all rights reserved. The source is published to be read and evaluated; using, copying or hosting it needs written permission. See [`LICENSE`](LICENSE).
 
 ---
 

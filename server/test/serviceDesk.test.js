@@ -58,6 +58,21 @@ const call = async (handler, req) => {
 // Notifications are sent without awaiting; give them a moment to land.
 const settle = () => new Promise((resolve) => setTimeout(resolve, 400));
 
+// Retry an assertion until it holds or 5 s pass. Use this, not settle(),
+// when waiting for something to arrive: a remote database can take longer
+// than any fixed sleep.
+const eventually = async (check, timeoutMs = 5000) => {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      return await check();
+    } catch (error) {
+      if (Date.now() > deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+};
+
 const fileIssue = (overrides = {}) =>
   models.Issue.create({
     studentId: student._id,
@@ -123,9 +138,10 @@ test("a student reply reopens a resolved issue and tells the assignee; closed is
   assert.equal(reply.body.reopened, true);
   assert.equal(reply.body.issue.status, "In Progress");
   assert.equal(reply.body.issue.lastEvent.type, "reopen");
-  await settle();
-  const told = await models.Notification.find({ issueId: issue._id });
-  assert.deepEqual(told.map((n) => String(n.userId)), [String(staffA._id)], "only the assignee is notified");
+  await eventually(async () => {
+    const told = await models.Notification.find({ issueId: issue._id });
+    assert.deepEqual(told.map((n) => String(n.userId)), [String(staffA._id)], "only the assignee is notified");
+  });
 
   await models.Issue.updateOne({ _id: issue._id }, { status: "Closed" });
   const closed = await call(issues.addStudentReply, { user: student, params: { id: String(issue._id) }, body: { message: "hello?" } });
@@ -371,8 +387,7 @@ test("RSVPs fill the places, then a waitlist that moves up when someone cancels"
   const promoted = await call(rsvps.getMyRsvp, { user: c, params });
   assert.equal(promoted.body.rsvp.status, "going");
   assert.match(promoted.body.rsvp.code, /^[A-HJ-NP-Z2-9]{6}$/);
-  await settle();
-  assert.ok(await models.Notification.exists({ userId: c._id, message: /place opened up/ }));
+  await eventually(async () => assert.ok(await models.Notification.exists({ userId: c._id, message: /place opened up/ })));
 
   // B changes their mind: back of the queue (full again → waitlist).
   const back = await call(rsvps.rsvpToEvent, { user: b, params });
@@ -425,9 +440,11 @@ test("saved searches alert a student once about new matching listings", async ()
 
   const sent = await runSavedSearchAlerts(new Date("2020-01-02T00:00:00Z"));
   assert.ok(sent >= 1);
-  await settle();
-  const notes = await models.Notification.find({ userId: student._id, message: /alert/ });
-  assert.equal(notes.length, 1);
+  const notes = await eventually(async () => {
+    const found = await models.Notification.find({ userId: student._id, message: /alert/ });
+    assert.equal(found.length, 1);
+    return found;
+  });
   assert.match(notes[0].message, /^1 new scholarship for your alert/);
   assert.match(notes[0].link, /^\/scholarships\/[0-9a-f]{24}$/);
 
@@ -476,10 +493,11 @@ test("notifications reach the devices someone turned them on for; bad endpoints 
   });
   try {
     await notify(models.Notification, student, { type: "issue_replied", message: "Staff replied to your issue", link: "/my-issues" });
-    await settle();
-    assert.equal(sent.length, 2);
+    await eventually(async () => {
+      assert.equal(sent.length, 2);
+      assert.equal(await models.PushSubscription.countDocuments({ endpoint: gone }), 0, "a gone subscription is removed");
+    });
     assert.deepEqual(sent.find((s) => s.endpoint === ok).payload, { title: "AtriumDesk", body: "Staff replied to your issue", url: "/my-issues" });
-    assert.equal(await models.PushSubscription.countDocuments({ endpoint: gone }), 0, "a gone subscription is removed");
 
     // The device changes hands (shared computer): only the new owner gets pushes.
     assert.equal((await call(subscribePush, { user: staffA, body: { endpoint: ok, keys } })).statusCode, 201);

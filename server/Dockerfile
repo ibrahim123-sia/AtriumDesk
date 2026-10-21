@@ -5,9 +5,9 @@ FROM node:22-slim
 ENV NODE_ENV=production
 WORKDIR /app
 
-# package-lock.json is not committed, so this is `npm install`, not `npm ci`.
-COPY package.json ./
-RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
+# Install exactly what package-lock.json pins.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
 COPY . .
 

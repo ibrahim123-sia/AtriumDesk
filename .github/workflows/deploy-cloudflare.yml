@@ -42,7 +42,7 @@ jobs:
 
       - name: Install Worker dependencies
         working-directory: cloudflare
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Deploy Worker and containers
         working-directory: cloudflare
@@ -72,7 +72,7 @@ jobs:
 
       - name: Install and build
         working-directory: client
-        run: npm install --no-audit --no-fund && npm run build
+        run: npm ci --no-audit --no-fund && npm run build
         env:
           VITE_SERVER_URL: ${{ vars.VITE_SERVER_URL }}
           VITE_PYTHON_URL: ${{ vars.VITE_PYTHON_URL }}

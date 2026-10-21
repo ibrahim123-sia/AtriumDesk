@@ -14,8 +14,8 @@
 //     opportunistically as they're requested (Vite's hashed build output
 //     isn't known ahead of time, so this can't be a fixed precache list).
 
-const CACHE_NAME = "atriumdesk-shell-v4";
-const APP_SHELL = ["/", "/manifest.json", "/graduation.png", "/logo-mark.svg", "/logo-lockup.svg"];
+const CACHE_NAME = "atriumdesk-shell-v5";
+const APP_SHELL = ["/", "/manifest.json", "/graduation.png", "/logo-mark.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

@@ -12,7 +12,8 @@ data/*.json
 data/urls.txt
 .hf-cache
 eval
-test_*.py
+tests
+pytest.ini
 *.log
 Dockerfile
 .dockerignore
