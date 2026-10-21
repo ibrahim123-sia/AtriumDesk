@@ -7,7 +7,7 @@ most valuable to prove correct" targets (§13.2) — the other 3 (hard-rule
 matching, CGPA conversion, SSRF validator) already have Node-side tests
 under server/test/.
 
-Run: pytest test_listing_scraper.py -v
+Run (from python/): python -m pytest tests/test_listing_scraper.py -v
 """
 
 from listing_scraper import _hash_content

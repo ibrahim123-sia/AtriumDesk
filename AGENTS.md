@@ -1,6 +1,6 @@
 # UniAssist — Master Specification (Complete)
 
-Single file containing the full, unabridged text of every planning document produced for UniAssist FYP-2, in one place, so nothing has to be cross-referenced across separate PDFs. This file is the complete reference; a separate well-structured PDF (`doc/Guide.pdf`, regenerated from this same source) is the human-readable presentation of the same content.
+Single file containing the full, unabridged text of every planning document produced for UniAssist FYP-2, in one place, so nothing has to be cross-referenced across separate PDFs. This file is the complete reference; a separate well-structured PDF (`doc/Guide.pdf`, regenerated from this same source) is the human-readable presentation of the same content. `doc/` is kept locally and is not in the repository.
 
 ## How to read this file — precedence when parts disagree
 
@@ -27,6 +27,7 @@ The five parts below were written in this order: **Part A (Rev 5) → Part B (Re
 | Notifications channels | Part E §E.7 (extends Part A §10) | In-app + email as before, plus browser push (web push) to devices the person turned it on for; every `notify()` call pushes. |
 | Walk-in queue, event RSVP, saved searches | Part E §E.7 | Built: department walk-in queue with call-next; event RSVPs with capacity, waitlist and door codes; saved-search alerts. |
 | Scope cut for the SaaS layer | Part D §6 | Must/Nice/Defer — see table there before adding SaaS-layer work. |
+| Repository layout and conventions | Part E §E.9 | Proprietary `LICENSE`, `SECURITY.md`, lockfiles committed (`npm ci`), Python tests in `python/tests`, plain commit messages. |
 
 ---
 
@@ -2231,7 +2232,7 @@ Merges Rev 5 §16's original list with this document's new items. Nothing here i
 
 # PART E — Rev 8: Review of the built system (October 2026)
 
-*Written after an end-to-end review of the running code on 2026-10-20 (branch `improve/review-2026-10`); §E.6–§E.8 were added when the follow-up features were built the same week. Unlike Parts A–D this part describes decisions already implemented. The long-form write-up, with research, verification and a feature guide, is `doc/AtriumDesk_Review_2026-10.pdf` (local, like `doc/Guide.pdf`).*
+*Written after an end-to-end review of the running code on 2026-10-20 (branch `improve/review-2026-10`, merged into `main` on 2026-10-21); §E.6–§E.8 were added when the follow-up features were built the same week. Unlike Parts A–D this part describes decisions already implemented. The long-form write-up, with research, verification and a feature guide, is `doc/AtriumDesk_Review_2026-10.pdf` (local, like `doc/Guide.pdf`).*
 
 ## Rev8 §E.1 Scope
 
@@ -2298,7 +2299,7 @@ The review stayed inside AtriumDesk's own domain — the AI student assistant, t
 | Working-hours SLA | `Tenant.businessHours {enabled, days, startHour, endHour, timezone}`; when enabled, first-reply targets count working hours only | `server/services/businessHours.js`, `scheduler.js` (`isSlaBreached`) |
 | Knowledge-base refresh | `Tenant.contentSource.refreshDays` (0 / 7 / 14 / 30) re-runs the website scrape; hand-written answers are kept | `adminContentSourceController.js` (`startContentScrape`), `scheduler.js` (`runKnowledgeBaseRefresh`) |
 | Admin issue view | The administrator's issue drawer shows internal notes | `client/src/administrator/pages/Query.jsx` |
-| Keyword search speed (2026-10-21) | Words, stems and URL tokens of every chunk are indexed once per collection version and `_stem` is cached; one keyword pass went from 75–90 s to under 0.2 s with identical results. This, not the LLM, was why chatbot answers took a minute | `python/database.py` (`_load_word_index`), `python/test_keyword_search.py` |
+| Keyword search speed (2026-10-21) | Words, stems and URL tokens of every chunk are indexed once per collection version and `_stem` is cached; one keyword pass went from 75–90 s to under 0.2 s with identical results. This, not the LLM, was why chatbot answers took a minute | `python/database.py` (`_load_word_index`), `python/tests/test_keyword_search.py` |
 | Result de-duplication | Search results are de-duplicated by the whole chunk text, not its first 120 characters (chunks of one page share a title/heading prefix; 376 distinct MAJU chunks were being dropped) | `database.search`, `rag._merge_search_results` |
 | Listing embeddings | `server/scripts/backfillListingEmbeddings.js` re-embeds every approved listing and removes embeddings whose listing is no longer approved or no longer exists (`GET /listings/embedded-ids`); run it after changing what an embedding stores | `python/api.py`, `python/listing_matching.py` |
 | Guest listings | Scholarship embeddings store `scope`; guests retrieve events and internal scholarships (`GUEST_WHERE`), never jobs or external scholarships | `listing_matching.search_listings(guest=True)`, `rag._retrieve_listing_context` |
@@ -2328,5 +2329,18 @@ Tests: `cd server && node --test` — 113 tests, including 16 integration tests 
 | 3 | Tenant SMTP credentials rejected (535) | Open — configure a working account or an `SMTP_*` relay |
 | 4 | Production push keys | Set `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` as deployment secrets once and keep them — new keys end every existing browser subscription |
 | 5 | Cloudflare deploy | Built and verified locally; the real deploy waits on the owner's Cloudflare login |
-| 6 | Branch `improve/review-2026-10` | Pushed, not merged into `main` |
-| 7 | Possible next steps | QR scanning for door codes (codes are typed today), a public "now serving" screen for walk-in queues, SSO and LMS/SIS connectors (the competitive gaps from September), push for bulk notices that bypass `notify()` (e.g. "listing closed" notices) |
+| 6 | Possible next steps | QR scanning for door codes (codes are typed today), a public "now serving" screen for walk-in queues, SSO and LMS/SIS connectors (the competitive gaps from September), push for bulk notices that bypass `notify()` (e.g. "listing closed" notices) |
+
+## Rev8 §E.9 Repository layout and conventions (2026-10-21)
+
+| Area | Decision (implemented) | Where |
+|---|---|---|
+| Branch | `improve/review-2026-10` merged into `main` and deleted; all work lands on `main` | git |
+| Commit messages | Plain messages: no AI co-author trailers or "generated with" lines | git history |
+| Licence | Proprietary, all rights reserved: the source may be read and evaluated, not used, copied or hosted without written permission | `LICENSE` |
+| Security reports | Private reporting through GitHub's Security tab (enabled on the repository); never a public issue | `SECURITY.md` |
+| Lockfiles | `package-lock.json` is committed for `client/`, `server/` and `cloudflare/`; the server image and the deploy workflow install with `npm ci` | `server/Dockerfile`, `.github/workflows/deploy-cloudflare.yml` |
+| Editor and line endings | LF in the repository; 2-space indent (4 for Python) | `.gitattributes`, `.editorconfig` |
+| Python tests | `python/tests/`, run from `python/` with `python -m pytest` (`pytest.ini` sets `testpaths` and `pythonpath`); excluded from the AI-service image | `python/pytest.ini`, `python/.dockerignore` |
+| Waiting in tests | Something sent without awaiting (notifications, push) is checked with `eventually()`, which retries for up to 5 s; a fixed sleep failed now and then against a remote database | `server/test/serviceDesk.test.js` |
+| Removed | `server/vercel.json` (deploys go to Cloudflare), unused `client/public/vite.svg` and `logo-lockup.svg` (service-worker cache bumped to v5) | — |

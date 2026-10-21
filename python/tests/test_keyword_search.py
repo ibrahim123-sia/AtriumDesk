@@ -1,7 +1,7 @@
 """The indexed keyword matcher must agree with `_has_word`, which it replaced
 in the hot path (database._keyword_search), and rag's rate-limit wait parsing.
 
-Run: python -m pytest test_keyword_search.py
+Run (from python/): python -m pytest tests/test_keyword_search.py
 """
 import database
 from rag import _retry_after_seconds
