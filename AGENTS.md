@@ -27,6 +27,7 @@ The five parts below were written in this order: **Part A (Rev 5) → Part B (Re
 | Notifications channels | Part E §E.7 (extends Part A §10) | In-app + email as before, plus browser push (web push) to devices the person turned it on for; every `notify()` call pushes. |
 | Walk-in queue, event RSVP, saved searches | Part E §E.7 | Built: department walk-in queue with call-next; event RSVPs with capacity, waitlist and door codes; saved-search alerts. |
 | Scope cut for the SaaS layer | Part D §6 | Must/Nice/Defer — see table there before adding SaaS-layer work. |
+| Search engines and link previews | Part E §E.10 | Public pages indexable with their own titles and canonical links; signed-in pages, `/embed`, `/unsubscribe` noindex; build writes `robots.txt` and, with `VITE_SITE_URL`, `sitemap.xml`. |
 | Repository layout and conventions | Part E §E.9 | Proprietary `LICENSE`, `SECURITY.md`, lockfiles committed (`npm ci`), Python tests in `python/tests`, plain commit messages. |
 
 ---
@@ -2344,3 +2345,16 @@ Tests: `cd server && node --test` — 113 tests, including 16 integration tests 
 | Python tests | `python/tests/`, run from `python/` with `python -m pytest` (`pytest.ini` sets `testpaths` and `pythonpath`); excluded from the AI-service image | `python/pytest.ini`, `python/.dockerignore` |
 | Waiting in tests | Something sent without awaiting (notifications, push) is checked with `eventually()`, which retries for up to 5 s; a fixed sleep failed now and then against a remote database | `server/test/serviceDesk.test.js` |
 | Removed | `server/vercel.json` (deploys go to Cloudflare), unused `client/public/vite.svg` and `logo-lockup.svg` (service-worker cache bumped to v5) | — |
+
+## Rev8 §E.10 Search engines and link previews (2026-10-21)
+
+| Area | Decision (implemented) | Where |
+|---|---|---|
+| Page titles and descriptions | One component sets the title, `meta description`, `robots` and canonical link on every route change. Public pages (`/`, `/guest/scholarships`, `/guest/activities/:slug`, `/login`, `/register`, `/privacy`, `/terms`) have their own wording, with the signed-in user's university where known; other pages keep "<university> — AtriumDesk" | `client/src/components/RouteMeta.jsx`, `client/src/utils/seo.js` |
+| Indexing | Public pages: `index, follow, max-image-preview:large`. Signed-in pages, `/embed` (framed copy of the guest chat) and `/unsubscribe` (personal link): `noindex`, plus `X-Robots-Tag: noindex` for the last two | `RouteMeta.jsx`, `client/public/_headers` |
+| Canonical links | `VITE_SITE_URL` (or the current origin) + the path without a trailing slash; `?u=<slug>` kept only on `/`, `/guest/scholarships` and campus-life pages, whose content depends on the university | `utils/seo.js` (`publicPageMeta`) |
+| robots.txt / sitemap.xml | Written at build time, because Cloudflare answers a missing file with `index.html`. robots.txt blocks the signed-in areas (`CRAWL_BLOCKED`); sitemap.xml lists the public pages and is written only when `VITE_SITE_URL` is set | `client/vite-plugin-seo.js` |
+| Link previews | Open Graph + Twitter `summary_large_image` tags; card `client/public/og-image.png` (1200×630); absolute URLs filled from `VITE_SITE_URL` | `client/index.html` |
+| Structured data | `WebApplication` JSON-LD (category `EducationalApplication`, feature list, author); no ratings or prices are claimed | `vite-plugin-seo.js` |
+| Icons | `favicon.ico` (16/32/48, from `logo-mark.svg`) beside the SVG icon; the default manifest no longer names one university | `client/public/` |
+| Setting it up | Set `VITE_SITE_URL` (a repository variable for the deploy workflow) to the web client's address, deploy, then submit `/sitemap.xml` in Google Search Console | `.github/workflows/deploy-cloudflare.yml`, `client/.env.example` |

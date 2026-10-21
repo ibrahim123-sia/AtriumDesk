@@ -1,5 +1,5 @@
 # AtriumDesk 🎓
-### Multi-tenant, AI-powered student-portal SaaS — onboard any university
+### AI student assistant & university help desk — a multi-tenant SaaS any university can join
 
 ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat&logo=react&logoColor=white)
 ![Redux Toolkit](https://img.shields.io/badge/Redux_Toolkit-764ABC?style=flat&logo=redux&logoColor=white)
@@ -16,7 +16,7 @@ AtriumDesk is a full-stack AI-powered platform that consolidates university stud
 > **Note:** AtriumDesk is a university-agnostic product and is not affiliated with, or officially launched for, any specific institution. Muhammad Ali Jinnah University (MAJU) is a *pilot / prospective tenant* — sample data was shared for evaluation, and they may onboard as a tenant in future.
 
 <p align="center">
-  <img src="preview.png" alt="AtriumDesk preview" width="100%"/>
+  <img src="preview.png" alt="AtriumDesk guest page: an AI admissions assistant with starter questions about fees, admission documents and scholarships, and upcoming campus events" width="100%"/>
 </p>
 
 ---
@@ -162,6 +162,7 @@ WHISPER_COMPUTE_TYPE=int8
 ```
 VITE_SERVER_URL=http://localhost:3000
 VITE_PYTHON_URL=http://localhost:8000
+# VITE_SITE_URL=https://atriumdesk-web.<you>.workers.dev   # the web client's own address, for search engines
 ```
 
 ### Seed the platform + first tenant
@@ -253,10 +254,11 @@ cd ../server && node scripts/pushUploads.js  # local uploads/ → the bucket
 cd ../client
 VITE_SERVER_URL=https://atriumdesk-api.<you>.workers.dev \
 VITE_PYTHON_URL=https://atriumdesk-api.<you>.workers.dev/ai \
+VITE_SITE_URL=https://atriumdesk-web.<you>.workers.dev \
 npm run build && npx wrangler deploy
 ```
 
-Without Docker, use **Actions → Deploy to Cloudflare → Run workflow** (`.github/workflows/deploy-cloudflare.yml`) for steps 4 and 6 — it needs the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` and the repository variables `VITE_SERVER_URL` / `VITE_PYTHON_URL`. A new database is seeded from your machine against Atlas with `node scripts/seedTenant.js` (in `server/`). `npm run logs` (in `cloudflare/`) tails the Worker; the containers' logs are in the dashboard under Workers → `atriumdesk-api` → Containers.
+Without Docker, use **Actions → Deploy to Cloudflare → Run workflow** (`.github/workflows/deploy-cloudflare.yml`) for steps 4 and 6 — it needs the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` and the repository variables `VITE_SERVER_URL` / `VITE_PYTHON_URL` (plus, optionally, `VITE_SITE_URL` — see below). A new database is seeded from your machine against Atlas with `node scripts/seedTenant.js` (in `server/`). `npm run logs` (in `cloudflare/`) tails the Worker; the containers' logs are in the dashboard under Workers → `atriumdesk-api` → Containers.
 
 ---
 
@@ -276,12 +278,26 @@ other sites may frame (see `client/public/_headers`).
 
 ---
 
+## 🔎 Search engines and link previews
+
+- Every public page (guest assistant, scholarships, campus life, login, sign-up, privacy, terms) has its own title,
+  description and canonical link; signed-in pages, `/embed` and `/unsubscribe` are `noindex`
+  (`client/src/components/RouteMeta.jsx`, wording in `client/src/utils/seo.js`).
+- Shared links show a preview card (`client/public/og-image.png`, Open Graph + Twitter tags in `client/index.html`),
+  and the page carries `WebApplication` structured data.
+- The build writes `robots.txt` (keeps crawlers out of the signed-in areas) and, when `VITE_SITE_URL` is set to the
+  web client's address, `sitemap.xml` plus absolute canonical and preview URLs (`client/vite-plugin-seo.js`).
+  After the first deploy, add the site to Google Search Console and submit `/sitemap.xml`.
+
+---
+
 ## 📁 Project Structure
 
 ```
 AtriumDesk/
 ├── client/                    # React web app — every role, plus the PWA shell
-│   ├── public/                # service worker, manifest, website widget (widget.js), _headers
+│   ├── public/                # service worker, manifest, website widget (widget.js), _headers, link-preview image
+│   ├── vite-plugin-seo.js     # robots.txt, sitemap.xml, canonical + preview URLs at build time
 │   └── src/
 │       ├── guest/             # public admissions assistant (+ /embed for the widget)
 │       ├── student/           # chat, issues, scholarships, jobs, events, saved, office queue
@@ -347,4 +363,4 @@ Proprietary — © 2026 Syed Ibrahim Ali, all rights reserved. The source is pub
 
 ---
 
-<p align="center">Built by <b>Syed Ibrahim Ali</b> — Full-Stack &amp; AI Engineer</p>
+<p align="center">Built by <a href="https://github.com/ibrahim123-sia"><b>Syed Ibrahim Ali</b></a> — Full-Stack &amp; AI Engineer</p>

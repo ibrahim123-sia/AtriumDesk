@@ -16,6 +16,7 @@ import GuestChat from "./guest/GuestChat";
 import GuestScholarships from "./guest/GuestScholarships";
 import GuestActivityPage from "./guest/GuestActivityPage";
 import RequireStaffPermission from "./components/RequireStaffPermission";
+import RouteMeta from "./components/RouteMeta";
 
 // Rev7 user request — "optimizations, industry standard practices."
 // Super Admin/Administrator/Staff are role-gated sections most users never
@@ -89,14 +90,6 @@ const App = () => {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
 
-  // Self-service branding (Rev 5 §11 / T1) — the page title reflects
-  // whichever university's tenant the logged-in user belongs to. Falls
-  // back to the default when logged out or branding hasn't loaded yet.
-  useEffect(() => {
-    const name = tenantBranding?.universityShort || tenantBranding?.universityName;
-    document.title = name ? `${name} — AtriumDesk` : "AtriumDesk";
-  }, [tenantBranding]);
-
   // Rev7 SaaS follow-up — PWA manifest was one static file shared by every
   // tenant, always showing MAJU's name/icon regardless of who's actually
   // logged in. Swap the <link rel="manifest"> to a per-tenant one (and the
@@ -168,6 +161,7 @@ const App = () => {
           },
         }}
       />
+      <RouteMeta />
       <Suspense fallback={<RouteFallback />}>
       <Routes>
         {/* Public routes */}

@@ -19,6 +19,11 @@
 /embed
   ! Content-Security-Policy
   ! X-Frame-Options
+  X-Robots-Tag: noindex
+
+# A personal link from an email; never in search results.
+/unsubscribe
+  X-Robots-Tag: noindex
 
 # The widget script is loaded by universities' websites.
 /widget.js

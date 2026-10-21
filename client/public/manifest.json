@@ -1,7 +1,7 @@
 {
-  "name": "AtriumDesk — MAJU Student Assistant",
+  "name": "AtriumDesk — AI Student Assistant",
   "short_name": "AtriumDesk",
-  "description": "AI-powered, multi-tenant student portal — chatbot, issues, scholarships, jobs, and events.",
+  "description": "AI student assistant and help desk for universities — admissions chat, issues, scholarships, jobs and events.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -2,11 +2,35 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/logo-mark.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AtriumDesk — AI Student Assistant &amp; Help Desk for Universities</title>
+    <meta name="description" content="An AI assistant that answers admissions, fee and programme questions from a university's own website, plus a student help desk, scholarships, jobs and events." />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="application-name" content="AtriumDesk" />
+    <meta name="author" content="Syed Ibrahim Ali" />
+    <link rel="icon" type="image/svg+xml" href="/logo-mark.svg" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <meta name="theme-color" content="#0D9488" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0A1614" media="(prefers-color-scheme: dark)" />
-    <meta name="description" content="AtriumDesk — AI-powered, multi-tenant student portal for universities" />
+
+    <!-- Link previews (WhatsApp, LinkedIn, Facebook, Slack, X). __SITE_URL__ is
+         filled from VITE_SITE_URL at build time (vite-plugin-seo.js). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AtriumDesk" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content="AtriumDesk — AI Student Assistant &amp; Help Desk for Universities" />
+    <meta property="og:description" content="Answers admissions, fee and programme questions from the university's own website, with a student help desk, scholarships, jobs and campus events." />
+    <meta property="og:image" content="__SITE_URL__/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="AtriumDesk: an AI admissions assistant with starter questions and upcoming campus events" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="AtriumDesk — AI Student Assistant &amp; Help Desk for Universities" />
+    <meta name="twitter:description" content="Answers admissions, fee and programme questions from the university's own website, with a student help desk, scholarships, jobs and campus events." />
+    <meta name="twitter:image" content="__SITE_URL__/og-image.png" />
+    <meta name="twitter:image:alt" content="AtriumDesk: an AI admissions assistant with starter questions and upcoming campus events" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet" />
@@ -15,10 +39,20 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="AtriumDesk" />
-    <title>AtriumDesk</title>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <main style="max-width: 40rem; margin: 3rem auto; padding: 0 1rem; font-family: system-ui, sans-serif; color: #0f2e2a">
+        <h1>AtriumDesk — AI student assistant and help desk for universities</h1>
+        <p>
+          Ask about admissions, programmes, fees and scholarships, raise issues with university departments,
+          and find scholarships, jobs and campus events matched to your profile.
+        </p>
+        <p>AtriumDesk needs JavaScript. Please turn it on and reload the page.</p>
+        <p><a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a></p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

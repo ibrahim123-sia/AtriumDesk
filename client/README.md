@@ -18,6 +18,7 @@ npm run preview   # serve the build locally
 |---|---|
 | `VITE_SERVER_URL` | Node API (default `http://localhost:3000`) |
 | `VITE_PYTHON_URL` | AI service (default `http://localhost:8000`; on Cloudflare it's the Worker's `/ai` path) |
+| `VITE_SITE_URL` | Optional: this web client's own public address. The build then adds canonical links, absolute link-preview URLs and `sitemap.xml` |
 
 ## Routes
 
@@ -43,10 +44,11 @@ staff/           StaffShell, dashboard, inbox, issue detail; components/IssueSta
 administrator/   AdminShell, pages, shared admin components (AdminTable, AdminModal, ShareAssistant…)
 platform/        Super Admin shell and pages
 profile/         Profile, YourDataCard (download my data / delete my account)
-components/      Sidebar, NotificationBell, layouts, ImpersonationBanner
+components/      Sidebar, NotificationBell, layouts, ImpersonationBanner, RouteMeta (page title + search tags)
 redux/slices/    one slice per area (auth, chat, guest, issue, saved, scholarship, job, event,
                  notification, tenant, platform, admin*)
-utils/           axios instance, branding.js (logo/initials), guestTenant.js (?u= handling)
+utils/           axios instance, branding.js (logo/initials), guestTenant.js (?u= handling),
+                 seo.js (public pages' titles/descriptions, crawler-blocked paths)
 ```
 
 ## Guest university selection
@@ -62,6 +64,12 @@ Guests have no login, so there is no JWT tenant claim. `utils/guestTenant.js` re
 ```
 
 It adds a chat button (`data-label`, `data-color` optional) that opens `/embed?u=<id>` in an iframe panel; nothing loads until it's opened. `public/_headers` forbids framing everywhere except `/embed` and lets any site load `widget.js`.
+
+## Search engines
+
+`components/RouteMeta.jsx` sets each page's title, description, `robots` tag and canonical link from `utils/seo.js`. Public pages (`/`, `/guest/scholarships`, `/guest/activities/:slug`, `/login`, `/register`, `/privacy`, `/terms`) are indexable, and `?u=<university>` stays in the canonical link of the pages whose content depends on it; everything else, including `/embed` and `/unsubscribe`, is `noindex` (`public/_headers` also sends `X-Robots-Tag: noindex` for those two, since crawlers may not run JavaScript).
+
+`vite-plugin-seo.js` runs at build time: it adds `WebApplication` structured data to `index.html`, writes `dist/robots.txt` (blocks the signed-in areas listed in `utils/seo.js`) and, when `VITE_SITE_URL` is set, `dist/sitemap.xml` and absolute canonical/`og:url`/`og:image` URLs. Both files must exist on disk: Cloudflare answers any missing path with `index.html`. The link-preview card is `public/og-image.png` (1200×630); `public/favicon.ico` is the tab icon for browsers and crawlers that don't take SVG.
 
 ## PWA
 
