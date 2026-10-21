@@ -12,6 +12,7 @@ LLM backend is selected by `config.USE_LOCAL_LLM`:
 """
 
 import re             # For regular expression operations in source matching and text cleanup
+import time           # Waiting out a short Groq rate limit before one more round
 import threading      # thread-local usage tracking — /ask runs in Starlette's threadpool, real OS threads, not just async coroutines
 
 import ollama         # The Ollama library for local LLM inference
@@ -234,7 +235,10 @@ def _get_groq_client(api_key):
     if client is None:
         from groq import Groq  # Groq client SDK for calling Groq cloud LLM API, imported lazily so local-only installs don't need the dependency
 
-        client = Groq(api_key=api_key, timeout=config.LLM_REQUEST_TIMEOUT)
+        # max_retries=0: the SDK otherwise retries a rate-limited (429) call
+        # twice, sleeping for the retry-after each time, so the next key and
+        # Gemini never got a turn. The failover in _llm_chat is the retry.
+        client = Groq(api_key=api_key, timeout=config.CLOUD_LLM_TIMEOUT, max_retries=0)
         _groq_clients[api_key] = client
     return client
 
@@ -273,7 +277,7 @@ def _llm_chat_gemini(messages, temperature):
         "temperature": temperature
     }
     
-    response = requests.post(url, headers=headers, json=payload, timeout=config.LLM_REQUEST_TIMEOUT)
+    response = requests.post(url, headers=headers, json=payload, timeout=config.CLOUD_LLM_TIMEOUT)
     if response.status_code == 200:
         res_json = response.json()
         try:
@@ -293,6 +297,37 @@ def _llm_chat_gemini(messages, temperature):
         raise RuntimeError(f"Gemini API returned status {response.status_code}: {response.text}")
 
 
+class GroqRateLimited(RuntimeError):
+    """Every Groq key was rate-limited; `retry_after` is the shortest wait
+    Groq asked for (seconds), or None when it didn't say."""
+
+    def __init__(self, message, retry_after=None):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+def _retry_after_seconds(exc):
+    """How long a rate-limited Groq call says to wait: the retry-after header,
+    else the "Please try again in 7.2s" in its message; None if neither."""
+    response = getattr(exc, "response", None)
+    header = None
+    if response is not None:
+        try:
+            header = response.headers.get("retry-after")
+        except Exception:
+            header = None
+    try:
+        if header is not None:
+            return float(header)
+    except (TypeError, ValueError):
+        pass
+    match = re.search(r"try again in ([0-9.]+)\s*(ms|s)\b", str(exc))
+    if match:
+        value = float(match.group(1))
+        return value / 1000 if match.group(2) == "ms" else value
+    return None
+
+
 def _llm_chat_groq(messages, temperature, max_tokens, reasoning_effort=None):
     """Call Groq, rolling over to the next API key when one is exhausted.
 
@@ -310,6 +345,7 @@ def _llm_chat_groq(messages, temperature, max_tokens, reasoning_effort=None):
         )
 
     errors = []
+    waits = []  # retry-after of each rate-limited key
     for idx, api_key in enumerate(keys):
         try:
             client = _get_groq_client(api_key)
@@ -341,15 +377,20 @@ def _llm_chat_groq(messages, temperature, max_tokens, reasoning_effort=None):
             })
             return content
         except Exception as exc:
-            reason = "rate-limited" if _is_rate_limit_error(exc) else "failed"
+            rate_limited = _is_rate_limit_error(exc)
+            reason = "rate-limited" if rate_limited else "failed"
             errors.append(f"key#{idx + 1}: {exc}")
+            if rate_limited:
+                waits.append(_retry_after_seconds(exc))
             if idx < len(keys) - 1:
                 print(f"  Groq key #{idx + 1} {reason}; rolling over to key #{idx + 2}...")
                 continue
             # Last key — give up so the caller can try the next provider.
-            raise RuntimeError(
-                f"All {len(keys)} Groq key(s) failed. Errors: {'; '.join(errors)}"
-            ) from exc
+            message = f"All {len(keys)} Groq key(s) failed. Errors: {'; '.join(errors)}"
+            if len(waits) == len(keys):
+                known = [w for w in waits if w is not None]
+                raise GroqRateLimited(message, min(known) if known else None) from exc
+            raise RuntimeError(message) from exc
 
 
 def _llm_chat(messages, temperature, max_tokens, reasoning_effort=None):
@@ -386,25 +427,38 @@ def _llm_chat(messages, temperature, max_tokens, reasoning_effort=None):
         return (response.get("message") or {}).get("content", "")
 
     errors = []
-    for provider in config.CLOUD_LLM_ORDER:
-        if provider == "gemini":
-            try:
-                print(f"  Attempting to call Gemini ({config.GEMINI_MODEL})...")
-                return _llm_chat_gemini(messages, temperature)
-            except Exception as exc:
-                err_msg = f"Gemini call failed: {exc}"
-                print(f"  Warning: {err_msg}")
-                errors.append(err_msg)
-        elif provider == "groq":
-            try:
-                print(f"  Attempting to call Groq ({config.GROQ_MODEL})...")
-                return _llm_chat_groq(messages, temperature, max_tokens, reasoning_effort)
-            except Exception as exc:
-                err_msg = f"Groq call failed: {exc}"
-                print(f"  Warning: {err_msg}")
-                errors.append(err_msg)
-        else:
-            print(f"  Warning: Unknown provider '{provider}' in CLOUD_LLM_ORDER")
+    # Fail over at once; only when every provider failed and Groq said "try
+    # again in a few seconds" (its free tier is 8,000 tokens/minute, about
+    # two answers) wait that long and go round once more — a short wait
+    # beats an error. Longer waits are left to the caller's fallback.
+    for attempt in range(2):
+        groq_wait = None
+        for provider in config.CLOUD_LLM_ORDER:
+            if provider == "gemini":
+                try:
+                    print(f"  Attempting to call Gemini ({config.GEMINI_MODEL})...")
+                    return _llm_chat_gemini(messages, temperature)
+                except Exception as exc:
+                    err_msg = f"Gemini call failed: {exc}"
+                    print(f"  Warning: {err_msg}")
+                    errors.append(err_msg)
+            elif provider == "groq":
+                try:
+                    print(f"  Attempting to call Groq ({config.GROQ_MODEL})...")
+                    return _llm_chat_groq(messages, temperature, max_tokens, reasoning_effort)
+                except Exception as exc:
+                    err_msg = f"Groq call failed: {exc}"
+                    print(f"  Warning: {err_msg}")
+                    errors.append(err_msg)
+                    if isinstance(exc, GroqRateLimited) and exc.retry_after is not None:
+                        groq_wait = exc.retry_after
+            else:
+                print(f"  Warning: Unknown provider '{provider}' in CLOUD_LLM_ORDER")
+        if attempt == 0 and groq_wait is not None and groq_wait <= config.LLM_RATE_LIMIT_WAIT:
+            print(f"  Every provider failed; Groq asked to wait {groq_wait:.1f}s — waiting, then one more round.")
+            time.sleep(groq_wait + 0.5)
+            continue
+        break
 
     raise RuntimeError(f"All configured cloud LLM providers failed. Errors: {'; '.join(errors)}")
 
@@ -678,7 +732,7 @@ def _build_retrieval_query(question, history):
 def _merge_search_results(result_sets, top_k):
     """Merge several (chunks, sources, scores) tuples into one ranked list.
 
-    Dedup key is the first 120 chars of the chunk text (same convention as
+    Dedup key is the whole chunk text (same convention as
     `database.search`). When a chunk appears in more than one result set we
     keep its HIGHEST score. Used to combine a standalone-question retrieval
     with the history-prepended one so neither view's relevant chunks are lost.
@@ -686,7 +740,7 @@ def _merge_search_results(result_sets, top_k):
     merged = {}
     for chunks, sources, scores in result_sets:
         for c, m, s in zip(chunks, sources, scores):
-            key = (c or "")[:120]
+            key = c or ""
             existing = merged.get(key)
             if existing is None or s > existing["score"]:
                 merged[key] = {"text": c, "meta": m, "score": s}
@@ -750,14 +804,15 @@ def _retrieve_listing_context(tenant_slug, retrieval_query, user_type, relevance
     whether to upgrade confidence_tier, which is a stricter bar than the
     inclusion threshold applied below.
 
-    §8.7.6 Branch D: guests get a narrower scope — external scholarships
-    and jobs are out of it, only campus events are in scope for them.
+    §8.7.6 Branch D: guests get a narrower scope — jobs and external
+    scholarships are out of it; campus events and the university's own
+    (internal) scholarships are in. Only events used to be passed, so the
+    university's own scholarship listings never reached a guest.
     """
     import listing_matching
 
-    listing_types = ["event"] if user_type == "guest" else None
     try:
-        hits = listing_matching.search_listings(tenant_slug, retrieval_query, listing_types=listing_types, top_k=5)
+        hits = listing_matching.search_listings(tenant_slug, retrieval_query, top_k=5, guest=(user_type == "guest"))
     except Exception as exc:
         print(f"  _retrieve_listing_context failed (degrading to no listing context): {exc}")
         return [], [], 0.0
@@ -773,40 +828,12 @@ def _retrieve_listing_context(tenant_slug, retrieval_query, user_type, relevance
     return chunks, sources, top_similarity
 
 
-def ask(
-    question,
-    tenant_slug=None,
-    history=None,
-    user_type="guest",
-    university_name=None,
-    university_short=None,
-    rag_config=None,
-):
-    """Run the full RAG pipeline for a student question.
+def retrieve_context(question, tenant_slug=None, history=None, user_type="guest", rag_config=None):
+    """The retrieval half of `ask()`: the knowledge-base chunks (and listing
+    blocks) the model will be given, and the confidence tier. Separate so
+    eval/retrieval_eval.py can check retrieval without spending LLM calls.
 
-    `tenant_slug` selects which university's knowledge base to search —
-    required for correct multi-tenant behavior; `None` falls back to the
-    legacy single-tenant (MAJU) collection for any caller not yet updated.
-
-    `history` (optional): prior chat turns as [{role, content}, ...] oldest
-    first. Used for two things: (1) passed to the LLM so it can resolve
-    follow-ups conversationally, and (2) the latest prior user turn is
-    prepended to the retrieval query so follow-ups like "or fee" still
-    pull topic-relevant chunks instead of generic ones.
-
-    `user_type` ("guest" | "student") and `university_name`/`university_short`
-    (tenant branding, falls back to the generic defaults if not supplied) feed
-    the Rev 5 §8.7.6 prompt template.
-
-    `rag_config` (optional dict): a tenant's own retrieval-tuning overrides
-    (Tenant.ragConfig, admin-settable) — any of confidenceHigh, confidenceLow,
-    topK, listingRelevance, listingConfident. Missing/absent keys fall back
-    to this module's platform-default constants, so callers that don't pass
-    it (or a tenant that hasn't set overrides) behave exactly as before.
-
-    Returns a dict: {"answer": str, "confidence_tier": "high"|"medium"|"low"}.
-    §4.2's chatbot-handoff tiering reads `confidence_tier`; the score it's
-    computed from was previously thrown away (see `compute_confidence_tier`).
+    Returns {"chunks", "sources", "faq_sources", "confidence_tier"}.
     """
     rag_config = rag_config or {}
     top_k = rag_config.get("topK") or config.TOP_K_RESULTS
@@ -815,12 +842,6 @@ def ask(
     listing_relevance = rag_config.get("listingRelevance") or LISTING_RELEVANCE_THRESHOLD
     listing_confident = rag_config.get("listingConfident") or LISTING_CONFIDENT_THRESHOLD
 
-    # Reset up front, not just inside _llm_chat — the `if not chunks` branch
-    # below returns a canned answer without ever calling _llm_chat, and this
-    # thread may have leftover usage from an earlier, unrelated request
-    # (threadpool threads are reused). Without this, that early-return path
-    # would report stale token counts instead of "no LLM call was made."
-    _set_last_usage(None)
     _initialize(tenant_slug)
     collection = _collections[tenant_slug]
 
@@ -869,6 +890,54 @@ def ask(
         # threshold) so a merely-included-but-weak hit doesn't upgrade it.
         if confidence_tier == "low" and listing_top_similarity >= listing_confident:
             confidence_tier = "medium"
+
+    return {"chunks": chunks, "sources": sources, "faq_sources": faq_sources, "confidence_tier": confidence_tier}
+
+
+def ask(
+    question,
+    tenant_slug=None,
+    history=None,
+    user_type="guest",
+    university_name=None,
+    university_short=None,
+    rag_config=None,
+):
+    """Run the full RAG pipeline for a student question.
+
+    `tenant_slug` selects which university's knowledge base to search —
+    required for correct multi-tenant behavior; `None` falls back to the
+    legacy single-tenant (MAJU) collection for any caller not yet updated.
+
+    `history` (optional): prior chat turns as [{role, content}, ...] oldest
+    first. Used for two things: (1) passed to the LLM so it can resolve
+    follow-ups conversationally, and (2) the latest prior user turn is
+    prepended to the retrieval query so follow-ups like "or fee" still
+    pull topic-relevant chunks instead of generic ones.
+
+    `user_type` ("guest" | "student") and `university_name`/`university_short`
+    (tenant branding, falls back to the generic defaults if not supplied) feed
+    the Rev 5 §8.7.6 prompt template.
+
+    `rag_config` (optional dict): a tenant's own retrieval-tuning overrides
+    (Tenant.ragConfig, admin-settable) — any of confidenceHigh, confidenceLow,
+    topK, listingRelevance, listingConfident. Missing/absent keys fall back
+    to this module's platform-default constants, so callers that don't pass
+    it (or a tenant that hasn't set overrides) behave exactly as before.
+
+    Returns a dict: {"answer": str, "confidence_tier": "high"|"medium"|"low"}.
+    §4.2's chatbot-handoff tiering reads `confidence_tier`; the score it's
+    computed from was previously thrown away (see `compute_confidence_tier`).
+    """
+    # Reset up front, not just inside _llm_chat — the `if not chunks` branch
+    # below returns a canned answer without ever calling _llm_chat, and this
+    # thread may have leftover usage from an earlier, unrelated request
+    # (threadpool threads are reused). Without this, that early-return path
+    # would report stale token counts instead of "no LLM call was made."
+    _set_last_usage(None)
+    context = retrieve_context(question, tenant_slug=tenant_slug, history=history, user_type=user_type, rag_config=rag_config)
+    chunks, sources, faq_sources = context["chunks"], context["sources"], context["faq_sources"]
+    confidence_tier = context["confidence_tier"]
 
     if not chunks:
         return {

@@ -6,13 +6,29 @@
 // would have nothing real to retrieve/compare against for them. Re-embedding
 // is an upsert (listing_matching.embed_listing), so this is safe to re-run
 // any time — every tenant, every currently-approved listing, unconditionally.
+//
+// It also removes embeddings whose listing is no longer approved or no
+// longer exists (deleted straight from the database, or from before
+// delete/expiry removed embeddings): the chatbot kept answering students
+// from such listings. Run it after changing what an embedding stores, too.
 import "dotenv/config";
 import mongoose from "mongoose";
 import connectDB from "../config/db.js";
 import { getTenantConnection } from "../config/tenantDb.js";
 import { getTenantModels } from "../models/registry.js";
 import { getTenantModel as getPlatformTenantModel } from "../models/platform/Tenant.js";
-import { embedListingAsync } from "../controllers/adminSourceController.js";
+import { embedListingAsync, removeListingEmbedding } from "../controllers/adminSourceController.js";
+
+const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://localhost:8000";
+
+const embeddedIds = async (tenantSlug) => {
+  const response = await fetch(`${PYTHON_BACKEND_URL}/listings/embedded-ids?tenant_slug=${encodeURIComponent(tenantSlug)}`, {
+    headers: { "x-internal-secret": process.env.INTERNAL_SECRET || "" },
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!response.ok) throw new Error(`AI service answered ${response.status} listing embeddings`);
+  return (await response.json()).ids || [];
+};
 
 const run = async () => {
   await connectDB();
@@ -32,7 +48,10 @@ const run = async () => {
       await embedListingAsync(tenant.slug, listing);
       total += 1;
     }
-    console.log(`✅ Backfilled ${listings.length} approved listing(s) for tenant "${tenant.slug}"`);
+    const approved = new Set(listings.map((l) => String(l._id)));
+    const stale = (await embeddedIds(tenant.slug)).filter((id) => !approved.has(id));
+    for (const id of stale) await removeListingEmbedding(tenant.slug, id);
+    console.log(`✅ Backfilled ${listings.length} approved listing(s) for tenant "${tenant.slug}", removed ${stale.length} stale embedding(s)`);
   }
 
   console.log(`Done — ${total} listing(s) embedded across ${tenants.length} tenant(s).`);

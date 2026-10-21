@@ -301,6 +301,7 @@ def build_database(collection_name=None, chunks=None):
 
 import re as _re      # For regular expressions used in query tokenization
 import math as _math  # For calculation of TF-IDF / BM25 term weights in keyword search
+from functools import lru_cache as _lru_cache  # _stem is pure and called for every word of every chunk
 
 
 _STOPWORDS = {
@@ -370,6 +371,7 @@ def _meaningful_tokens(text):
     return list(set(expanded))
 
 
+@_lru_cache(maxsize=200_000)
 def _stem(word):
     """Normalize common academic suffixes and spelling variations (singular/plural, UK/US spelling)."""
     w = word.lower()
@@ -417,6 +419,33 @@ def _has_word(token, text_low, url_tokens=None):
     return False, False
 
 
+def _url_tokens(source_url):
+    """Raw, stemmed and de-hyphenated tokens of a chunk's source URL."""
+    tokens = set()
+    for w in _re.findall(r"[a-z0-9\-]+", (source_url or "").lower()):
+        tokens.add(w)
+        tokens.add(_stem(w))
+        if "-" in w:
+            tokens.add(w.replace("-", ""))
+            tokens.add(_stem(w.replace("-", "")))
+    return tokens
+
+
+def _word_sets(text_low):
+    """(words, stems) of a chunk, built once so matching a query token is two
+    set lookups. Same rule as `_has_word`: a token matches a word that is
+    equal to it or has the same stem, hyphenated words also de-hyphenated."""
+    words, stems = set(), set()
+    for w in _re.findall(r"[a-z0-9\-]+", text_low):
+        words.add(w)
+        stems.add(_stem(w))
+        if "-" in w:
+            w_norm = w.replace("-", "")
+            words.add(w_norm)
+            stems.add(_stem(w_norm))
+    return words, stems
+
+
 # Keyed by collection name — a bare module-level cache (no key) would let
 # one tenant's cached chunks get served for a different tenant's collection
 # whenever their counts happened to match, exactly the same "process-lifetime
@@ -458,6 +487,34 @@ def _load_all_chunks(collection):
     return chunks, ids, metas
 
 
+def _load_word_index(collection):
+    """Per-chunk (words, stems, url_tokens), cached with the chunk list.
+
+    Re-tokenizing and stemming every word of every chunk on every question
+    (twice) made one keyword pass take 75-90 s on a ~4,800-chunk knowledge
+    base — the bulk of every chatbot answer's time. Built once per
+    collection version, it's set lookups after that."""
+    chunks, ids, metas = _load_all_chunks(collection)
+    entry = _keyword_cache[collection.name]
+    if "index" not in entry:
+        index = []
+        for idx, text in enumerate(chunks):
+            meta = metas[idx] if idx < len(metas) else {}
+            words, stems = _word_sets((text or "").lower())
+            index.append((words, stems, _url_tokens((meta or {}).get("source", ""))))
+        entry["index"] = index
+    return chunks, ids, metas, entry["index"]
+
+
+def _indexed_match(token, token_stem, words, stems, url_tokens):
+    """`_has_word` against a prebuilt index: (matched, in_url)."""
+    if url_tokens and token_stem in url_tokens:
+        return True, True
+    if token in words or token_stem in stems:
+        return True, False
+    return False, False
+
+
 def _keyword_search(question, collection, top_k):
     """Score chunks by TF-IDF based keyword matching over text and URLs.
 
@@ -469,36 +526,27 @@ def _keyword_search(question, collection, top_k):
     if not tokens:
         return [], [], []
 
-    chunks, ids, metas = _load_all_chunks(collection)
-    
-    # 1. Precompute stemmed URL tokens for all chunks
-    precomputed_urls = []
-    for idx, text in enumerate(chunks):
-        meta = metas[idx] if idx < len(metas) else {}
-        source_url = meta.get("source", "").lower()
-        raw_url_tokens = _re.findall(r"[a-z0-9\-]+", source_url)
-        url_tokens = set()
-        for w in raw_url_tokens:
-            url_tokens.add(w)
-            url_tokens.add(_stem(w))
-            if "-" in w:
-                url_tokens.add(w.replace("-", ""))
-                url_tokens.add(_stem(w.replace("-", "")))
-        precomputed_urls.append(url_tokens)
-    
-    # 2. Compute Document Frequency (DF) and IDF for each token in the query
-    dfs = {t: 0 for t in tokens}
+    chunks, ids, metas, index = _load_word_index(collection)
+    token_stems = {t: _stem(t) for t in tokens}
+
+    # 1. Which query tokens each chunk matches (shared by DF and scoring)
+    matches = []
     for idx, text in enumerate(chunks):
         if not text:
+            matches.append(None)
             continue
-        low = text.lower()
-        url_tokens = precomputed_urls[idx]
-        
+        words, stems, url_tokens = index[idx]
+        matches.append({t: _indexed_match(t, token_stems[t], words, stems, url_tokens) for t in tokens})
+
+    # 2. Compute Document Frequency (DF) and IDF for each token in the query
+    dfs = {t: 0 for t in tokens}
+    for found in matches:
+        if found is None:
+            continue
         for t in tokens:
-            matched, _ = _has_word(t, low, url_tokens)
-            if matched:
+            if found[t][0]:
                 dfs[t] += 1
-                
+
     idfs = {}
     total_docs = len(chunks)
     total_query_idf = 0.0
@@ -517,19 +565,18 @@ def _keyword_search(question, collection, top_k):
     for idx, text in enumerate(chunks):
         if not text:
             continue
-        low = text.lower()
-        url_tokens = precomputed_urls[idx]
-        
+        found = matches[idx]
+
         matched_idf_sum = 0.0
         for t in tokens:
-            matched, in_url = _has_word(t, low, url_tokens)
+            matched, in_url = found[t]
             if matched:
                 term_score = idfs[t]
                 # Boost match if it's found in the source URL path
                 if in_url:
                     term_score *= 1.5
                 matched_idf_sum += term_score
-                
+
         if matched_idf_sum > 0:
             # Normalized score between 0 and 1 (can exceed 1 if URL boosts apply)
             norm_score = matched_idf_sum / total_query_idf
@@ -582,14 +629,17 @@ def search(question, collection, model, top_k=None):
     kw_chunks, kw_metas, kw_scores = _keyword_search(question, collection, top_k=kw_k)
 
     # --- merge with dedup -----------------------------------------------
-    # Identity key: first 120 chars of chunk text (good enough — chunks
-    # don't collide on the prefix in practice).
+    # Identity key: the whole chunk text. It used to be the first 120
+    # characters, but heading-anchored chunks of one page all start with the
+    # same page title and heading — 376 different chunks of MAJU's
+    # knowledge base shared a prefix with another and were dropped as
+    # "duplicates" (e.g. the scholarships table rows).
     merged = {}
     for c, m, s in zip(sem_chunks, sem_metas, sem_scores):
-        key = (c or "")[:120]
+        key = c or ""
         merged[key] = {"text": c, "meta": m, "score": s, "kw": 0.0}
     for c, m, s in zip(kw_chunks, kw_metas, kw_scores):
-        key = (c or "")[:120]
+        key = c or ""
         if key in merged:
             merged[key]["kw"] = s
         else:

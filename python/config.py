@@ -250,7 +250,11 @@ for _gk in (GROQ_API_KEY, GROQ_API_KEY_2, os.getenv("GROQ_API_KEY_3", "")):
         GROQ_API_KEYS.append(_gk)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# gemini-2.5-flash (and -lite) were withdrawn for new API keys in 2026 — a new
+# key got 404 "no longer available to new users", so the fallback silently
+# never worked. gemini-3.5-flash answers in ~5 s; gemini-flash-latest (now
+# 3.8-flash) took 45-60 s, too slow for a fallback. Override with GEMINI_MODEL.
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
 # Define fallback order for cloud LLMs. Groq is primary (preferred for answer
 # quality and instruction-following); Gemini is the last-resort fallback if
@@ -271,6 +275,13 @@ else:
 LLM_TEMPERATURE = 0.3                       # Lower = more focused answers (0-1)
 # Increased max tokens to 1000 to allow complete and comprehensive long answers
 LLM_MAX_TOKENS = 1000                       # Max length of generated answer (Ollama `num_predict`)
+# Cloud calls (Groq, Gemini) get their own, much shorter limit: a stuck call
+# has to give up in time for the next key/provider to answer inside Node's
+# 120 s chat timeout. Answers normally take 2-20 s.
+CLOUD_LLM_TIMEOUT = int(os.getenv("CLOUD_LLM_TIMEOUT", "45"))
+# When every provider failed and Groq said "try again in N s", wait and retry
+# once if N is at most this many seconds.
+LLM_RATE_LIMIT_WAIT = float(os.getenv("LLM_RATE_LIMIT_WAIT", "20"))
 LLM_REQUEST_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "300"))  # seconds; 3B on CPU is slow (cold start ~30-60s + generation)
 # Pass to Ollama's `keep_alive` so the model stays in RAM between requests.
 # Default is 5 min — every cold-after-idle request then pays the ~30-60s reload.

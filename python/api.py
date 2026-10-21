@@ -506,6 +506,13 @@ async def embed_listing_endpoint(request: EmbedListingRequest):
     return {"success": True}
 
 
+@app.get("/listings/embedded-ids", dependencies=[Depends(verify_internal_secret)])
+async def embedded_listing_ids_endpoint(tenant_slug: str):
+    import listing_matching
+
+    return {"success": True, "ids": listing_matching.embedded_listing_ids(tenant_slug)}
+
+
 @app.delete("/listings/embed/{listing_id}", dependencies=[Depends(verify_internal_secret)])
 async def remove_listing_embedding_endpoint(listing_id: str, tenant_slug: str):
     import listing_matching

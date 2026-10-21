@@ -96,6 +96,9 @@ def _build_metadata(listing_type, data):
     if deadline:
         meta["deadline"] = str(deadline)[:10]
     if listing_type == "scholarship":
+        # internal = the university's own award (in a guest's scope, §19.2);
+        # the model's default is external.
+        meta["scope"] = data.get("scope") or "external"
         for key in ("country", "degreeLevel", "fundingType"):
             if data.get(key):
                 meta[key] = data[key]
@@ -131,6 +134,14 @@ def embed_listing(tenant_slug, listing_id, listing_type, data):
         documents=[text],
         metadatas=[_build_metadata(listing_type, data)],
     )
+
+
+def embedded_listing_ids(tenant_slug):
+    """Every listing id that has an embedding — lets the backfill drop
+    embeddings whose listing was deleted outside the app (they kept feeding
+    the chatbot listings that no longer exist)."""
+    collection = _get_collection(tenant_slug)
+    return list(collection.get(include=[]).get("ids", []))
 
 
 def remove_listing_embedding(tenant_slug, listing_id):
@@ -186,15 +197,27 @@ def find_duplicate(tenant_slug, listing_type, data, exclude_id=None):
     return None
 
 
-def search_listings(tenant_slug, query, listing_types=None, top_k=5):
+# Guests see campus events and the university's own scholarships, never
+# jobs or external ones (§8.7.6 Branch D, §19.2). A scholarship embedded
+# before `scope` was stored has no scope and stays hidden from guests until
+# it is re-embedded (server/scripts/backfillListingEmbeddings.js).
+GUEST_WHERE = {
+    "$or": [
+        {"listingType": {"$eq": "event"}},
+        {"$and": [{"listingType": {"$eq": "scholarship"}}, {"scope": {"$eq": "internal"}}]},
+    ]
+}
+
+
+def search_listings(tenant_slug, query, listing_types=None, top_k=5, guest=False):
     """§8 Layer 4 — semantic retrieval for the chatbot's RAG-over-new-content
     layer. Returns a list of dicts, each the listing's flattened metadata
     (title, organization, requirement fields, etc. — see `_build_metadata`)
     plus its embedded prose and similarity score, ranked descending.
 
     `listing_types`, when given, restricts results to those discriminator
-    values (e.g. guests never see job/external-scholarship content per
-    §8.7.6 Branch D — rag.py passes `["event"]` for a guest caller).
+    values. `guest=True` applies GUEST_WHERE instead (events and internal
+    scholarships only).
     """
     collection = _get_collection(tenant_slug)
     if collection.count() == 0:
@@ -202,7 +225,10 @@ def search_listings(tenant_slug, query, listing_types=None, top_k=5):
 
     model = _get_model()
     embedding = model.encode(query).tolist()
-    where = {"listingType": {"$in": listing_types}} if listing_types else None
+    if guest:
+        where = GUEST_WHERE
+    else:
+        where = {"listingType": {"$in": listing_types}} if listing_types else None
 
     results = collection.query(
         query_embeddings=[embedding],
