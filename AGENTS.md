@@ -2233,7 +2233,7 @@ Merges Rev 5 §16's original list with this document's new items. Nothing here i
 
 # PART E — Rev 8: Review of the built system (October 2026)
 
-*Written after an end-to-end review of the running code on 2026-10-20 (branch `improve/review-2026-10`, merged into `main` on 2026-10-21); §E.6–§E.8 were added when the follow-up features were built the same week. Unlike Parts A–D this part describes decisions already implemented. The long-form write-up, with research, verification and a feature guide, is `doc/AtriumDesk_Review_2026-10.pdf` (local, like `doc/Guide.pdf`).*
+*Written after an end-to-end review of the running code on 2026-10-20 (branch `improve/review-2026-10`, merged into `main` on 2026-10-21); §E.6–§E.8 were added when the follow-up features were built the same week, and §E.9–§E.10 record the repository tidy-up and search-engine work on `main` (2026-10-21). Unlike Parts A–D this part describes decisions already implemented. The long-form write-up, with research, verification and a feature guide, is `doc/AtriumDesk_Review_2026-10.pdf` (local, like `doc/Guide.pdf`).*
 
 ## Rev8 §E.1 Scope
 
@@ -2330,7 +2330,8 @@ Tests: `cd server && node --test` — 113 tests, including 16 integration tests 
 | 3 | Tenant SMTP credentials rejected (535) | Open — configure a working account or an `SMTP_*` relay |
 | 4 | Production push keys | Set `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` as deployment secrets once and keep them — new keys end every existing browser subscription |
 | 5 | Cloudflare deploy | Built and verified locally; the real deploy waits on the owner's Cloudflare login |
-| 6 | Possible next steps | QR scanning for door codes (codes are typed today), a public "now serving" screen for walk-in queues, SSO and LMS/SIS connectors (the competitive gaps from September), push for bulk notices that bypass `notify()` (e.g. "listing closed" notices) |
+| 6 | Possible next steps | An AtriumDesk tab icon (`logo-mark.svg` and `favicon.ico` still show the "M" mark), QR scanning for door codes (codes are typed today), a public "now serving" screen for walk-in queues, SSO and LMS/SIS connectors (the competitive gaps from September), push for bulk notices that bypass `notify()` (e.g. "listing closed" notices) |
+| 7 | Search engines live, GitHub page | Owner steps: set the `VITE_SITE_URL` repository variable before deploying, then submit `/sitemap.xml` in Google Search Console. On GitHub (⚙ next to *About*): topics `rag`, `chatbot`, `llm`, `edtech`, `student-portal`, `university`, `help-desk`, `saas`, `multi-tenant`, `react`, `redux-toolkit`, `tailwindcss`, `nodejs`, `express`, `mongodb`, `fastapi`, `chromadb`, `python`, `pwa`, `cloudflare-workers`; the website address once deployed; Settings → General → Social preview = `client/public/og-image.png` |
 
 ## Rev8 §E.9 Repository layout and conventions (2026-10-21)
 
@@ -2350,11 +2351,16 @@ Tests: `cd server && node --test` — 113 tests, including 16 integration tests 
 
 | Area | Decision (implemented) | Where |
 |---|---|---|
-| Page titles and descriptions | One component sets the title, `meta description`, `robots` and canonical link on every route change. Public pages (`/`, `/guest/scholarships`, `/guest/activities/:slug`, `/login`, `/register`, `/privacy`, `/terms`) have their own wording, with the signed-in user's university where known; other pages keep "<university> — AtriumDesk" | `client/src/components/RouteMeta.jsx`, `client/src/utils/seo.js` |
+| Before | Every page had one description and the title "AtriumDesk" (or `<university> — AtriumDesk`); no `robots.txt` or `sitemap.xml` — Cloudflare served `index.html` for both; shared links had no preview; `/unsubscribe` and `/embed` were indexable; the default manifest was named after MAJU | — |
+| Page titles and descriptions | One component sets the title, `meta description`, `robots` and canonical link on every route change. Public pages (`/`, `/guest/scholarships`, `/guest/activities/:slug`, `/login`, `/register`, `/privacy`, `/terms`) have their own wording, with the signed-in user's university where known; other pages keep `<university> — AtriumDesk`. Titles: `/` "AtriumDesk — AI Student Assistant & Help Desk for Universities" (`<university> Admissions Assistant` when known); then Scholarships, Campus Life, Create a Student Account, Log In, Privacy Policy, Terms of Service, each followed by the site name | `client/src/components/RouteMeta.jsx`, `client/src/utils/seo.js` |
 | Indexing | Public pages: `index, follow, max-image-preview:large`. Signed-in pages, `/embed` (framed copy of the guest chat) and `/unsubscribe` (personal link): `noindex`, plus `X-Robots-Tag: noindex` for the last two | `RouteMeta.jsx`, `client/public/_headers` |
 | Canonical links | `VITE_SITE_URL` (or the current origin) + the path without a trailing slash; `?u=<slug>` kept only on `/`, `/guest/scholarships` and campus-life pages, whose content depends on the university | `utils/seo.js` (`publicPageMeta`) |
 | robots.txt / sitemap.xml | Written at build time, because Cloudflare answers a missing file with `index.html`. robots.txt blocks the signed-in areas (`CRAWL_BLOCKED`); sitemap.xml lists the public pages and is written only when `VITE_SITE_URL` is set | `client/vite-plugin-seo.js` |
 | Link previews | Open Graph + Twitter `summary_large_image` tags; card `client/public/og-image.png` (1200×630); absolute URLs filled from `VITE_SITE_URL` | `client/index.html` |
 | Structured data | `WebApplication` JSON-LD (category `EducationalApplication`, feature list, author); no ratings or prices are claimed | `vite-plugin-seo.js` |
 | Icons | `favicon.ico` (16/32/48, from `logo-mark.svg`) beside the SVG icon; the default manifest no longer names one university | `client/public/` |
+| Without JavaScript | A `<noscript>` heading, one-line description and links to the privacy policy and terms | `client/index.html` |
+| README and GitHub page | README subtitle leads with "AI student assistant & university help desk", the preview has descriptive alt text, the footer links the author's GitHub profile. Topics, website and social preview are repository settings only the owner can change (§E.8) | `README.md` |
+| How it fits together | `RouteMeta` is mounted once, before the routes, and `App.jsx` no longer sets the title (a child's effect runs before its parent's, so a title set in `App` would overwrite the page's). `utils/seo.js` is plain JavaScript shared by the browser and the build plugin. The plugin reads `VITE_SITE_URL` from Vite's resolved env, strips a trailing slash and rejects anything but a bare `http(s)://host` | `client/src/App.jsx`, `client/vite-plugin-seo.js` |
 | Setting it up | Set `VITE_SITE_URL` (a repository variable for the deploy workflow) to the web client's address, deploy, then submit `/sitemap.xml` in Google Search Console | `.github/workflows/deploy-cloudflare.yml`, `client/.env.example` |
+| Verified | Lint and build with and without `VITE_SITE_URL` (robots.txt always; sitemap.xml, `Sitemap:` line and absolute URLs only with it). Production build in a browser: titles, `robots` and canonical correct on public pages, `?u` and trailing-slash cases; `/embed`, `/unsubscribe` and signed-in pages `noindex` with no canonical; `og-image.png` and `favicon.ico` served with the right types | — |
