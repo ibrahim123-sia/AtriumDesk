@@ -238,10 +238,13 @@ npx wrangler r2 bucket create atriumdesk-uploads
 # 3. Secrets (once; values from server/.env and python/.env).
 #    R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY: dashboard → R2 → Manage API tokens
 #    → "Object Read & Write" on atriumdesk-uploads.
+#    VAPID_*: generate once with `npx web-push generate-vapid-keys` and keep them;
+#    VAPID_SUBJECT is mailto:<support address>.
 for s in MONGODB_URI JWT_SECRET PLATFORM_JWT_SECRET INTERNAL_SECRET FIELD_ENCRYPTION_KEY \
-         R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY GROQ_API_KEY GEMINI_API_KEY EMAIL_USER EMAIL_PASS; do
+         R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY GROQ_API_KEY GEMINI_API_KEY EMAIL_USER EMAIL_PASS \
+         VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY VAPID_SUBJECT; do
   npx wrangler secret put $s
-done                                  # optional: GROQ_API_KEY_2, GROQ_API_KEY_3
+done   # optional: GROQ_API_KEY_2, GROQ_API_KEY_3; SMTP_HOST/PORT/SECURE/USER/PASS + EMAIL_FROM for a relay
 
 # 4. Backend: Worker + both containers (Docker must be running)
 npm run deploy

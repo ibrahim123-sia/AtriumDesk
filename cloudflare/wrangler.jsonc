@@ -61,7 +61,8 @@
   // Non-secret settings. Secrets (MONGODB_URI, JWT_SECRET,
   // PLATFORM_JWT_SECRET, INTERNAL_SECRET, FIELD_ENCRYPTION_KEY,
   // R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, GROQ_API_KEY, GEMINI_API_KEY,
-  // EMAIL_USER, EMAIL_PASS, ...) are set with `npx wrangler secret put <NAME>`
+  // EMAIL_USER, EMAIL_PASS, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, ...) are set
+  // with `npx wrangler secret put <NAME>`
   // — never here.
   "vars": {
     // This Worker's own public URL, e.g. https://atriumdesk-api.<you>.workers.dev
@@ -79,7 +80,8 @@
     "DEFAULT_TENANT_SLUG": "maju",
     "CLOUD_LLM_ORDER": "groq,gemini",
     "GROQ_MODEL": "openai/gpt-oss-120b",
-    "GEMINI_MODEL": "gemini-2.5-flash",
+    // gemini-2.5-flash is withdrawn for new keys; keep in step with python/config.py.
+    "GEMINI_MODEL": "gemini-3.5-flash",
     // Must match the model baked into python/Dockerfile (ARG WHISPER_MODEL).
     "WHISPER_MODEL": "base"
   }
