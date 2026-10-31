@@ -171,6 +171,8 @@ VITE_PYTHON_URL=http://localhost:8000
 cd server
 node scripts/seedTenant.js   # idempotent — creates/updates the Tenant registry row, that tenant's
                               # Administrator, and the Super Admin user from the env vars above
+node scripts/seedSuperAdmin.js   # or: only the Super Admin, for an empty platform where every
+                                 # university is then created from the Super Admin portal
 ```
 
 ### Running locally
