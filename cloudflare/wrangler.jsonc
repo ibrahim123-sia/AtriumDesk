@@ -67,11 +67,11 @@
   "vars": {
     // This Worker's own public URL, e.g. https://atriumdesk-api.<you>.workers.dev
     // or https://api.your-domain.com (no trailing slash).
-    "PUBLIC_URL": "https://atriumdesk-api.REPLACE-ME.workers.dev",
+    "PUBLIC_URL": "https://atriumdesk-api.syedibrahimali.workers.dev",
     // The web app's URL (CORS + links in emails), no trailing slash.
-    "CLIENT_URL": "https://atriumdesk-web.REPLACE-ME.workers.dev",
+    "CLIENT_URL": "https://atriumdesk-web.syedibrahimali.workers.dev",
     // Cloudflare account id (R2 endpoint) and the bucket above.
-    "R2_ACCOUNT_ID": "REPLACE-ME",
+    "R2_ACCOUNT_ID": "4332134c34daf9571750f9994bfff95c",
     "R2_BUCKET": "atriumdesk-uploads",
     // Time zone the daily jobs' hours are in (backup 1am, reminders 2am,
     // listing expiry 3am, digests 6am).
