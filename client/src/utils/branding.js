@@ -8,5 +8,15 @@ export const brandInitials = (name, fallback = "AD") => {
   return (words[0].charAt(0) + words[1].charAt(0)).toUpperCase();
 };
 
-// Only http(s) or same-origin paths are rendered as an <img>.
-export const safeLogoUrl = (url) => (/^(https?:\/\/|\/)/i.test(String(url || "")) ? url : null);
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
+
+// The address to put in an <img> for a university's logo, or null. Only
+// http(s) URLs and paths are allowed. A logo uploaded in the Super Admin
+// portal is stored as "/uploads/…", which the API server serves, not the web
+// app (a different origin in development and on Cloudflare).
+export const safeLogoUrl = (url) => {
+  const value = String(url || "");
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith("/uploads/")) return `${SERVER_URL}${value}`;
+  return value.startsWith("/") ? value : null;
+};

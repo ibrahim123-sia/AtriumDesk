@@ -278,7 +278,7 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
               style={{ background: "#fff", color: C.navy, fontSize: 13 }}
             >
               {safeLogoUrl(tenantBranding?.logoUrl) ? (
-                <img src={tenantBranding.logoUrl} alt="" className="w-full h-full object-contain p-0.5" />
+                <img src={safeLogoUrl(tenantBranding.logoUrl)} alt="" className="w-full h-full object-contain p-0.5" />
               ) : (
                 brandInitials(tenantBranding?.universityShort)
               )}

@@ -7,6 +7,7 @@ import axios from "../../utils/axios";
 import { getPalette } from "../../administrator/utils/palette";
 import { updateTenantBilling, updateTenantFeatures, updateTenant, fetchTenantAnalytics } from "../../redux/slices/platformSlice";
 import StudentEmailPatternBuilder from "../../administrator/components/StudentEmailPatternBuilder";
+import { safeLogoUrl } from "../../utils/branding";
 
 const FEATURES = [
   { key: "scholarships", label: "Scholarships" },
@@ -272,9 +273,9 @@ const TenantDetail = () => {
               ))}
             </div>
             <div className="flex items-center gap-3">
-              {(logoPreview || tenant.branding?.logoUrl) && (
+              {(logoPreview || safeLogoUrl(tenant.branding?.logoUrl)) && (
                 <img
-                  src={logoPreview || tenant.branding.logoUrl}
+                  src={logoPreview || safeLogoUrl(tenant.branding.logoUrl)}
                   alt="Logo"
                   className="h-10 w-10 rounded-lg object-contain border"
                   style={{ borderColor: C.border }}
