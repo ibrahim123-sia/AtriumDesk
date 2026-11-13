@@ -78,10 +78,34 @@ export const resolveTenantByEmailDomain = async (domain) => {
   return tenant || null;
 };
 
+// The universities a visitor can choose on the landing page: active ones
+// only, with just what the picker shows (no domains, settings or plan).
+let activeList = null; // { value, expiresAt }
+
+export const listActiveUniversities = async () => {
+  if (activeList && activeList.expiresAt >= now()) return activeList.value;
+  const Tenant = getTenantModel();
+  const tenants = await Tenant.find({ status: "active" })
+    .select("slug name branding.universityName branding.universityShort branding.logoUrl branding.primaryColor")
+    .lean();
+  const value = tenants
+    .map((t) => ({
+      slug: t.slug,
+      name: t.branding?.universityName || t.name,
+      shortName: t.branding?.universityShort || "",
+      logoUrl: t.branding?.logoUrl || "",
+      primaryColor: /^#[0-9a-f]{3,8}$/i.test(t.branding?.primaryColor || "") ? t.branding.primaryColor : "",
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  activeList = { value, expiresAt: now() + CACHE_TTL_MS };
+  return value;
+};
+
 // Call after any write to a Tenant document (branding change, status change,
 // slug/domain edit) so the next lookup reflects it immediately rather than
 // waiting out the TTL.
 export const invalidateTenantCache = () => {
   bySlug.clear();
   byDomain.clear();
+  activeList = null;
 };

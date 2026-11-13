@@ -24,7 +24,7 @@ npm run preview   # serve the build locally
 
 | Who | Paths |
 |---|---|
-| Guest (public) | `/` (admissions assistant — signed-in users are sent to their own home), `/?u=<university>` (a specific university's assistant, remembered), `/embed` (compact chat for the website widget), `/guest/scholarships`, `/guest/activities/:slug`, `/login`, `/register`, `/unsubscribe`, `/privacy`, `/terms` |
+| Guest (public) | `/` (university picker, or the admissions assistant once a university is chosen — signed-in users are sent to their own home), `/?u=<university>` (a specific university's assistant, remembered), `/embed` (compact chat for the website widget), `/guest/scholarships`, `/guest/activities/:slug`, `/login`, `/register`, `/unsubscribe`, `/privacy`, `/terms` |
 | Student | `/chat`, `/scholarships(/:id)`, `/jobs(/:id)`, `/events(/:id)` (with RSVP), `/saved` (saved items + application tracker), `/queue` (office walk-in queue — in the sidebar once an office uses it), `/issues`, `/issues/new`, `/issues/:id`, `/profile` (incl. search alerts and browser notifications) |
 | Staff | `/staff/dashboard`, `/staff/issues`, `/staff/issues/:id`, `/staff/queue` (walk-in queue), `/staff/profile`; with delegated permissions also `/staff/data`, `/staff/content`, `/staff/activities`, `/staff/query(/:id)`, `/staff/failed-questions` |
 | Administrator | `/admin/dashboard`, `/admin/users(/:id)`, `/admin/staff`, `/admin/departments`, `/admin/query(/:id)`, `/admin/data`, `/admin/failed-questions`, `/admin/content`, `/admin/activities`, `/admin/logs`, `/admin/health`, `/admin/settings`, `/admin/profile` |
@@ -36,7 +36,8 @@ Students use the left `Sidebar` (`components/Sidebar.jsx`); staff, administrator
 
 ```
 auth/            Login, Register, ProtectedRoute, HomeRoute, roleHome.js
-guest/           GuestChat (also the /embed widget view), GuestSidebar, guest scholarships/activities
+guest/           GuestChat (also the /embed widget view), GuestSidebar, UniversityPicker, GuestRoute,
+                 guest scholarships/activities
 student/         pages (chat, opportunities, issues, saved), components (Message, ApplicationTracker,
                  DetailStates, ShareActions, MatchedListingCard…)
 staff/           StaffShell, dashboard, inbox, issue detail; components/IssueStaffTools
@@ -47,13 +48,17 @@ profile/         Profile, YourDataCard (download my data / delete my account)
 components/      Sidebar, NotificationBell, layouts, ImpersonationBanner, RouteMeta (page title + search tags)
 redux/slices/    one slice per area (auth, chat, guest, issue, saved, scholarship, job, event,
                  notification, tenant, platform, admin*)
-utils/           axios instance, branding.js (logo/initials), guestTenant.js (?u= handling),
+utils/           axios instance, branding.js (logo address/initials), guestTenant.js (?u= handling),
                  seo.js (public pages' titles/descriptions, crawler-blocked paths)
 ```
 
 ## Guest university selection
 
-Guests have no login, so there is no JWT tenant claim. `utils/guestTenant.js` reads `?u=<slug>` on start-up, stores it in `localStorage.guestTenant` (switching university also drops the previous guest session) and every guest request sends it as `tenant`. Without it the server uses its default tenant.
+Guests have no login, so there is no JWT tenant claim. `utils/guestTenant.js` reads `?u=<slug>` on start-up, stores it in `localStorage.guestTenant` (switching university also drops the previous guest session) and every guest request sends it as `tenant`.
+
+A visitor who arrives without one sees `guest/UniversityPicker.jsx` on `/`: the active universities from `GET /api/guest/universities` (name, short name, logo, colour — nothing else), with a search box once there are seven or more. With a single active university it opens that one straight away. A link to a university that doesn't exist or is suspended comes back to the picker with a note, and the guest sidebar has **Change university**. `guest/GuestRoute.jsx` does the same for `/embed` (the picker, without the header) and sends `/guest/*` pages without a university back to `/`.
+
+Uploaded logos are stored as `/uploads/…` on the API server, so `utils/branding.js` (`safeLogoUrl`) prefixes `VITE_SERVER_URL` before they go into an `<img>`; a logo that fails to load falls back to initials on the picker.
 
 ## Website widget
 

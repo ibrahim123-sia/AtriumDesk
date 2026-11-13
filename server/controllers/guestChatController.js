@@ -3,7 +3,7 @@ import crypto from "crypto";
 import fetch from "node-fetch";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { getModelsForTenant } from "../models/registry.js";
-import { resolveTenantBySlug, DEFAULT_TENANT_SLUG } from "../services/tenantRegistry.js";
+import { resolveTenantBySlug, listActiveUniversities, DEFAULT_TENANT_SLUG } from "../services/tenantRegistry.js";
 import { startOfToday } from "../services/dates.js";
 import { escapeRegex } from "../services/escapeRegex.js";
 import { mentionsSelfHarm, wellbeingReply } from "../services/wellbeing.js";
@@ -572,6 +572,19 @@ export const getGuestBranding = async (req, res) => {
   } catch (error) {
     console.error("getGuestBranding error:", error.message);
     res.status(500).json({ success: false, message: "Failed to load branding" });
+  }
+};
+
+// GET /api/guest/universities — for a visitor who arrives without a
+// university's own link (/?u=<slug>): the active universities to choose from.
+export const getGuestUniversities = async (req, res) => {
+  try {
+    const universities = await listActiveUniversities();
+    res.setHeader("Cache-Control", "public, max-age=60");
+    res.json({ success: true, universities });
+  } catch (error) {
+    console.error("getGuestUniversities error:", error.message);
+    res.status(500).json({ success: false, message: "Failed to load universities" });
   }
 };
 

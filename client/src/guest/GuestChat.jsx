@@ -13,6 +13,7 @@ import { AnswerSources, AnswerFeedback, WellbeingNote } from "../student/compone
 import { starterQuestionsFor } from "../utils/starterQuestions";
 import { toggleTheme as toggleThemeAction } from "../redux/slices/themeSlice";
 import GuestSidebar from "./GuestSidebar";
+import { forgetGuestTenant } from "../utils/guestTenant";
 import {
   Send,
   Brain,
@@ -83,9 +84,18 @@ const GuestChat = ({ embedded = false }) => {
     dispatch(fetchGuestListings());
   }, [dispatch]);
 
+  // A link to a university that doesn't exist or isn't active: back to the
+  // university picker rather than a page that can't answer.
   useEffect(() => {
-    dispatch(fetchGuestBranding());
-  }, [dispatch]);
+    dispatch(fetchGuestBranding())
+      .unwrap()
+      .catch((error) => {
+        if (error?.status !== 404) return;
+        forgetGuestTenant();
+        dispatch(clearGuestSession());
+        routerNavigate(embedded ? "/embed" : "/", { replace: true, state: { unavailable: true } });
+      });
+  }, [dispatch, routerNavigate, embedded]);
 
   // Also scroll when loading state changes (when response starts coming)
   useEffect(() => {

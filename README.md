@@ -26,7 +26,7 @@ AtriumDesk is a full-stack AI-powered platform that consolidates university stud
 ### 🎓 Student Portal
 | Module | Status | Description |
 |--------|--------|-------------|
-| **Guest Page** | ✅ | Public admissions assistant for applicants: chat, the university's own scholarships and campus events. Each university has its own link (`/?u=<id>`) and a one-tag **website widget** (`/widget.js`) |
+| **Guest Page** | ✅ | Public admissions assistant for applicants: chat, the university's own scholarships and campus events. Each university has its own link (`/?u=<id>`) and a one-tag **website widget** (`/widget.js`); a visitor without one picks their university first |
 | **Auth** | ✅ | Register / login with a university email, OTP verification, password recovery |
 | **AI Chatbot** | ✅ | Answers university queries via RAG over the tenant's own website; source links under confident answers; 👍/👎 on every answer (a 👎 lands in the failed-question log); one-click "file a query" handoff with the transcript; starter questions the university chooses; rename / clear conversations; voice input; profanity filter with admin flagging. A message suggesting self-harm gets a fixed support reply with the university's own counselling contacts, never a model answer |
 | **Issue Tracker** | ✅ | Submit and track support requests with attachments; the form offers an existing answer before you file; replying to a resolved issue reopens it; rejection reasons shown; resolved issues auto-close after 7 days; in-app bell + email notifications |
@@ -129,7 +129,7 @@ PLATFORM_JWT_SECRET=<long-random-string> # Super Admin JWTs — must differ from
 INTERNAL_SECRET=<long-random-string, must match python/.env>
 FIELD_ENCRYPTION_KEY=<32-byte-hex>       # encrypts a tenant's own SMTP app password at rest
 SUPERADMIN_EMAIL / SUPERADMIN_NAME / SUPERADMIN_PASSWORD   # seeded on first run
-DEFAULT_TENANT_SLUG=maju                 # which tenant guest/legacy traffic resolves to
+DEFAULT_TENANT_SLUG=maju                 # guest requests that name no university (old links); the web app asks the visitor to choose
 EMAIL_USER / EMAIL_PASS                  # platform-default Gmail SMTP fallback
 SMTP_HOST / SMTP_PORT / SMTP_SECURE      # …or any other SMTP relay (e.g. smtp-relay.brevo.com:587)
 SMTP_USER / SMTP_PASS / EMAIL_FROM       # relay login + sender address (a tenant's own SMTP in Settings wins)
@@ -188,12 +188,12 @@ python run.py server    # → http://localhost:8000
 npm run dev             # → http://localhost:5173
 ```
 
-Log in as the admin you seeded, create departments + staff from the admin panel, then register a student through the UI to exercise the full flow. A guest can open a specific university's assistant with `http://localhost:5173/?u=<tenant slug>`.
+Log in as the admin you seeded, create departments + staff from the admin panel, then register a student through the UI to exercise the full flow. A guest can open a specific university's assistant with `http://localhost:5173/?u=<tenant slug>`; plain `http://localhost:5173/` lists the active universities to choose from.
 
 ### Tests
 
 ```bash
-cd server && npm test                  # node --test (113 tests) — matching, CGPA conversion, URL/SSRF guard,
+cd server && npm test                  # node --test (114 tests) — matching, CGPA conversion, URL/SSRF guard,
                                        # scheduler, working hours, wellbeing, skill gaps, department suggestion,
                                        # file store, tenant isolation, and service-desk integration tests
                                        # (issues, guests, data rights, RSVPs, alerts, push, walk-in queue)

@@ -4,6 +4,7 @@ import {
   getGuestChatHistory,
   clearGuestSession,
   getGuestBranding,
+  getGuestUniversities,
   guestChatLimiter,
   guestSessionLimiter,
   guestAnswerFeedback,
@@ -14,6 +15,7 @@ import { listGuestActivityTabs, getGuestActivityTab } from "../controllers/guest
 const router = express.Router();
 
 // Guest chat route (no authentication required)
+router.get("/universities", guestSessionLimiter, getGuestUniversities); // Active universities, for visitors without a university link
 router.get("/branding", guestSessionLimiter, getGuestBranding); // Tenant branding for the landing page
 router.post("/chat", guestChatLimiter, guestTextChatController); // Send message
 router.get("/history", guestSessionLimiter, getGuestChatHistory); // Get chat history

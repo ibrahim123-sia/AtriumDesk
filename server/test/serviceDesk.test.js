@@ -25,7 +25,7 @@ const { invalidateTenantCache } = await import("../services/tenantRegistry.js");
 const issues = await import("../controllers/issueController.js");
 const { submitAnswerFeedback } = await import("../controllers/chatController.js");
 const { exportMyData, deleteMyAccount } = await import("../controllers/accountDataController.js");
-const { guestTextChatController, clearGuestSession } = await import("../controllers/guestChatController.js");
+const { guestTextChatController, clearGuestSession, getGuestUniversities } = await import("../controllers/guestChatController.js");
 const { runAutoCloseResolvedIssues, runKnowledgeBaseRefresh, runSavedSearchAlerts } = await import("../services/scheduler.js");
 const savedSearches = await import("../controllers/savedSearchController.js");
 const { textMessageController } = await import("../controllers/messageController.js");
@@ -238,6 +238,23 @@ test("first-time guests get their own session; made-up ids are replaced", async 
   assert.equal(again.body.sessionId, a.body.sessionId);
   assert.equal(again.body.reply.answerIndex, 3);
   for (const id of ids) await call(clearGuestSession, { body: { sessionId: id } });
+});
+
+test("the landing page lists active universities only, without their settings", async () => {
+  invalidateTenantCache();
+  const res = await call(getGuestUniversities, {});
+  assert.equal(res.statusCode, 200);
+  const mine = res.body.universities.find((u) => u.slug === SLUG);
+  assert.deepEqual(Object.keys(mine).sort(), ["logoUrl", "name", "primaryColor", "shortName", "slug"]);
+  assert.equal(mine.name, "Service Desk Test University");
+  assert.equal(mine.shortName, "SDTU");
+
+  await getTenantModel().updateOne({ _id: tenantDoc._id }, { status: "suspended" });
+  invalidateTenantCache();
+  const after = await call(getGuestUniversities, {});
+  assert.ok(!after.body.universities.some((u) => u.slug === SLUG), "a suspended university is not offered");
+  await getTenantModel().updateOne({ _id: tenantDoc._id }, { status: "active" });
+  invalidateTenantCache();
 });
 
 test("data export holds the student's records without secrets or staff notes", async () => {

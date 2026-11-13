@@ -20,9 +20,11 @@ export const fetchGuestBranding = createAsyncThunk(
         dispatch(setFeeConfig(data.feeConfig));
         return data;
       }
-      return rejectWithValue(data.message);
+      return rejectWithValue({ status: 200, message: data.message });
     } catch (error) {
-      return rejectWithValue(error.message);
+      // 404: the university doesn't exist or isn't active (GuestChat sends the
+      // visitor back to the university picker).
+      return rejectWithValue({ status: error.response?.status || 0, message: error.message });
     }
   }
 );

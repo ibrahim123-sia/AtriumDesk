@@ -7,7 +7,8 @@ import {
   Sparkles, Trophy, Music, Palette, BookOpen, Camera, Dumbbell,
   Globe, Heart, Mic, Code, Drama, Landmark, Rocket,
 } from "lucide-react";
-import { fetchGuestActivityTabs } from "../redux/slices/guestSlice";
+import { fetchGuestActivityTabs, clearGuestSession } from "../redux/slices/guestSlice";
+import { forgetGuestTenant } from "../utils/guestTenant";
 
 // Must match server/controllers/adminActivityController.js's ALLOWED_ICONS.
 const ACTIVITY_ICONS = {
@@ -51,6 +52,12 @@ const GuestSidebar = ({
   }));
   const navItems = [...baseNavItems, ...extraNavItems];
 
+  const changeUniversity = () => {
+    forgetGuestTenant();
+    dispatch(clearGuestSession());
+    navigate("/", { state: { choose: true } });
+  };
+
   return (
     <>
       {isMenuOpen && (
@@ -78,7 +85,7 @@ const GuestSidebar = ({
         <div className="p-6 border-b border-[#D9E7E4] dark:border-[#1E3A35]">
           <div className="flex items-center gap-3">
             {safeLogoUrl(tenantBranding?.logoUrl) ? (
-              <img src={tenantBranding.logoUrl} alt="" className="w-10 h-10 rounded-lg object-contain bg-white border border-[#D9E7E4]" />
+              <img src={safeLogoUrl(tenantBranding.logoUrl)} alt="" className="w-10 h-10 rounded-lg object-contain bg-white border border-[#D9E7E4]" />
             ) : (
               <div className="w-10 h-10 rounded-lg flex items-center justify-center relative bg-[#0D9488]">
                 <span className="text-white font-bold text-lg leading-none">{universityShort.charAt(0).toUpperCase()}</span>
@@ -94,6 +101,13 @@ const GuestSidebar = ({
               </p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={changeUniversity}
+            className="mt-3 text-xs font-medium text-[#0D9488] dark:text-[#5EC8BC] hover:underline"
+          >
+            Change university
+          </button>
         </div>
 
         <div className="p-4 border-b border-[#D9E7E4] dark:border-[#1E3A35]">

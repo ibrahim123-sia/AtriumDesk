@@ -15,7 +15,7 @@ The five parts below were written in this order: **Part A (Rev 5) → Part B (Re
 | ChromaDB tenancy mechanism | Part D §5.4 (corrects Part C §6) | One `PersistentClient`, one path, one collection per tenant. |
 | CORS fix | Part B Finding 3, reaffirmed by Part D §5.6 | Single `CLIENT_URL` allow-list — unchanged, because JWT-claim routing means one frontend origin. |
 | Login lockout / OTP limiter / stray ChromaDB | Part B Findings 1, 2, 4; Part E §E.2 | Fixed — lockout counts recent failures in `LoginEvent`; OTP limiters wired, plus per-address and code-check limiters (Part E); stray root store removed from git. |
-| Guest university selection | Part E §E.3 (extends Part D §5.5, which covers signed-in users only) | Guests have no JWT: a university's link `/?u=<slug>` or website widget picks it, every guest request carries `tenant`; otherwise the default tenant. |
+| Guest university selection | Part E §E.3 (extends Part D §5.5, which covers signed-in users only) | Guests have no JWT: a university's link `/?u=<slug>` or website widget picks it, every guest request carries `tenant`; without one, `/` shows a picker of the active universities. |
 | Guest sessions | Part E §E.3 | Server-issued ids only (`guest_<32 hex>`), bound to one university; anything else gets a fresh session. |
 | Framing / embedding | Part E §E.3 | App sends `frame-ancestors 'self'`; only `/embed` (the widget's guest chat) may be framed by other sites. |
 | Matching output states | Part E §E.2 (supersedes Part A §8 Layer 1's three states) | Four: excluded / eligible / near miss / **unverified** (a requirement the profile doesn't answer is never treated as met). |
@@ -2263,6 +2263,8 @@ The review stayed inside AtriumDesk's own domain — the AI student assistant, t
 | Insights | `GET /api/admin/stats/assistant` — answers by tier, guest answers, helpful rate (chat only), handoffs, answers accepted on the issue form, top gaps | `server/controllers/adminStatsController.js` |
 | Guest sessions | Only server-issued ids are accepted; a session belongs to one university; the move into a new account at sign-up checks the university | `guestChatController.js`, `userController.js` |
 | Guest university | `/?u=<slug>` (remembered in `localStorage.guestTenant`) or the widget's `/embed?u=<slug>`; all guest calls send `tenant` | `client/src/utils/guestTenant.js` |
+| University picker (2026-11-13) | A visitor without a university link sees the active universities (`GET /api/guest/universities`: slug, name, short name, logo, colour only; cached 60 s and cleared with the tenant cache) and chooses one; one active university opens directly; an unknown or suspended `?u=` returns to the picker with a note; the guest sidebar has *Change university*. `DEFAULT_TENANT_SLUG` now only covers guest API calls that name no university | `client/src/guest/UniversityPicker.jsx`, `GuestRoute.jsx`, `server/services/tenantRegistry.js` (`listActiveUniversities`) |
+| Uploaded logos | Stored as `/uploads/tenant-logos/…` on the API server; `safeLogoUrl` prefixes `VITE_SERVER_URL`, so they now show in the sidebars, navbars and Super Admin (they never did before, since the web app is on another origin) | `client/src/utils/branding.js` |
 | Website widget | `client/public/widget.js` adds a button that opens `/embed` in an iframe; Admin → Settings shows the link and snippet | `client/src/administrator/components/ShareAssistant.jsx` |
 | Framing | `frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN` for the app, removed for `/embed` | `client/public/_headers` |
 | Knowledge base rebuild | Chunks not created by the website scrape (ids not starting `chunk_`) are kept across a rebuild | `python/database.py` |
@@ -2319,7 +2321,7 @@ The review stayed inside AtriumDesk's own domain — the AI student assistant, t
 
 Daily jobs (server local time, `TZ`): chroma backup 01:00 · deadline reminders 02:00 · expired listings 03:00 · auto-close issues 04:00 · knowledge-base refresh 05:00 · digests 06:00 · saved-search alerts 07:00 (`DAILY_JOB_HOURS` in `scheduler.js`; the same table drives `POST /api/admin/internal/run-jobs` on Cloudflare).
 
-Tests: `cd server && node --test` — 113 tests, including 16 integration tests in `server/test/serviceDesk.test.js` (throwaway tenant DB) for notes, reopen, transfer, auto-close, feedback, guest sessions, export/deletion, wellbeing, drafts, working hours, KB refresh, RSVPs, saved searches, push and the walk-in queue.
+Tests: `cd server && node --test` — 114 tests, including 17 integration tests in `server/test/serviceDesk.test.js` (throwaway tenant DB) for notes, reopen, transfer, auto-close, feedback, guest sessions, the university list, export/deletion, wellbeing, drafts, working hours, KB refresh, RSVPs, saved searches, push and the walk-in queue.
 
 ## Rev8 §E.8 Still open
 

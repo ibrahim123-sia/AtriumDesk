@@ -13,6 +13,7 @@ import ProtectedRoute from "./auth/ProtectedRoute";
 import ChatPage from "./student/pages/ChatPage";
 import HomeRoute from "./auth/HomeRoute";
 import GuestChat from "./guest/GuestChat";
+import GuestRoute from "./guest/GuestRoute";
 import GuestScholarships from "./guest/GuestScholarships";
 import GuestActivityPage from "./guest/GuestActivityPage";
 import RequireStaffPermission from "./components/RequireStaffPermission";
@@ -167,9 +168,9 @@ const App = () => {
         {/* Public routes */}
         <Route path="/" element={<HomeRoute />} />
         {/* The website widget's frame (public/widget.js) — guest chat only. */}
-        <Route path="/embed" element={<GuestChat embedded />} />
-        <Route path="/guest/scholarships" element={<GuestScholarships />} />
-        <Route path="/guest/activities/:slug" element={<GuestActivityPage />} />
+        <Route path="/embed" element={<GuestRoute embedded><GuestChat embedded /></GuestRoute>} />
+        <Route path="/guest/scholarships" element={<GuestRoute><GuestScholarships /></GuestRoute>} />
+        <Route path="/guest/activities/:slug" element={<GuestRoute><GuestActivityPage /></GuestRoute>} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/unsubscribe" element={<Unsubscribe />} />
