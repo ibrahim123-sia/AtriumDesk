@@ -11,6 +11,8 @@
 ![Cloudflare](https://img.shields.io/badge/Deploy-Cloudflare-F38020?style=flat&logo=cloudflare&logoColor=white)
 ![License](https://img.shields.io/badge/License-Proprietary-lightgrey?style=flat)
 
+**🌐 Live:** [atriumdesk-web.syedibrahimali.workers.dev](https://atriumdesk-web.syedibrahimali.workers.dev) · API: [atriumdesk-api.syedibrahimali.workers.dev](https://atriumdesk-api.syedibrahimali.workers.dev)
+
 AtriumDesk is a full-stack AI-powered platform that consolidates university student services into one intelligent system, built database-per-tenant so any university can be onboarded. At its core is a smart chatbot (RAG over each tenant's own scraped website content) with voice input support — making university help accessible to every student. The client is a responsive web app with an installable, offline-capable PWA shell.
 
 > **Note:** AtriumDesk is a university-agnostic product and is not affiliated with, or officially launched for, any specific institution. Muhammad Ali Jinnah University (MAJU) is a *pilot / prospective tenant* — sample data was shared for evaluation, and they may onboard as a tenant in future.
