@@ -10,9 +10,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HF_HOME=/app/.hf-cache \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# OpenMP runtime for torch / CTranslate2 (faster-whisper).
+# OpenMP runtime for torch / CTranslate2 (faster-whisper); libatomic for the
+# Node driver Playwright ships with (it fails to start without it).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 \
+    && apt-get install -y --no-install-recommends libgomp1 libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # requirements.txt pulls CPU-only torch from the PyTorch index.

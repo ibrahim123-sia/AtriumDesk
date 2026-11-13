@@ -232,7 +232,9 @@ Containers sleep when idle and their disks are wiped on every sleep or redeploy,
 ```bash
 # 1. Login + bucket (once)
 cd cloudflare && npm install
-npx wrangler login
+npx wrangler login                    # or put CLOUDFLARE_ACCOUNT_ID and an account API token
+                                      # (Workers Scripts, Containers, R2 Storage edit; Account
+                                      # Settings read) as CLOUDFLARE_API_TOKEN in cloudflare/.env
 npx wrangler r2 bucket create atriumdesk-uploads
 
 # 2. Edit cloudflare/wrangler.jsonc → vars: PUBLIC_URL, CLIENT_URL, R2_ACCOUNT_ID
@@ -247,6 +249,8 @@ for s in MONGODB_URI JWT_SECRET PLATFORM_JWT_SECRET INTERNAL_SECRET FIELD_ENCRYP
          VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY VAPID_SUBJECT; do
   npx wrangler secret put $s
 done   # optional: GROQ_API_KEY_2, GROQ_API_KEY_3; SMTP_HOST/PORT/SECURE/USER/PASS + EMAIL_FROM for a relay
+#    or all at once: pipe a JSON object {"NAME": "value", ...} into `npx wrangler secret bulk`
+#    (creates the Worker if it doesn't exist yet)
 
 # 4. Backend: Worker + both containers (Docker must be running)
 npm run deploy
